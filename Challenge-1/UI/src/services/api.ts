@@ -22,36 +22,48 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// Add response interceptor to handle auth errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // Handle 401 Unauthorized errors, but don't automatically redirect
+    if (error.response && error.response.status === 401) {
+      console.log('Authentication error detected, but letting components handle redirect');
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Tasks API
 export const TasksAPI = {
   // Get all tasks
-  getAll: () => api.get<Task[]>('/tasks'),
+  getAll: () => api.get('/tasks'),
   
   // Get tasks by status
-  getByStatus: (status: 'pending' | 'completed') => 
-    api.get<Task[]>(`/tasks?status=${status}`),
+  getByStatus: (status: 'pending' | 'in_progress' | 'completed') => 
+    api.get(`/tasks?status=${status}`),
   
   // Get tasks by category
   getByCategory: (category: string) => 
-    api.get<Task[]>(`/tasks?category=${category}`),
+    api.get(`/tasks?category=${category}`),
   
   // Get a single task
-  getById: (id: number) => api.get<Task>(`/tasks/${id}`),
+  getById: (id: number) => api.get(`/tasks/${id}`),
   
   // Create a new task
-  create: (task: Omit<Task, 'id' | 'created_at' | 'updated_at'>) => 
-    api.post<Task>('/tasks', task),
+  create: (task: Omit<Task, 'id' | 'created_at' | 'updated_at' | 'user_id'>) => 
+    api.post('/tasks', task),
   
   // Update a task
   update: (id: number, task: Partial<Task>) => 
-    api.put<Task>(`/tasks/${id}`, task),
+    api.put(`/tasks/${id}`, task),
   
   // Delete a task
   delete: (id: number) => api.delete(`/tasks/${id}`),
   
   // Update task status
-  updateStatus: (id: number, status: 'pending' | 'completed') => 
-    api.patch<Task>(`/tasks/${id}/status`, { status })
+  updateStatus: (id: number, status: 'pending' | 'in_progress' | 'completed') => 
+    api.put(`/tasks/${id}`, { status })
 };
 
 // Auth API
