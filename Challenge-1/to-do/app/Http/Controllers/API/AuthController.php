@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -32,6 +33,14 @@ class AuthController extends Controller
         ]);
 
         $token = $user->createToken('auth_token')->plainTextToken;
+        
+        // Log successful registration
+        Log::channel('auth')->info('User registered', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->header('User-Agent'),
+        ]);
 
         return response()->json([
             'message' => 'User registered successfully',
@@ -54,21 +63,50 @@ class AuthController extends Controller
             'password' => 'required',
         ]);
 
-        if (!Auth::attempt($request->only('email', 'password'))) {
-            throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
+        try {
+            if (!Auth::attempt($request->only('email', 'password'))) {
+                // Log failed login attempt
+                Log::channel('auth')->warning('Failed login attempt', [
+                    'email' => $request->email,
+                    'ip_address' => $request->ip(),
+                    'user_agent' => $request->header('User-Agent'),
+                ]);
+                
+                throw ValidationException::withMessages([
+                    'email' => ['The provided credentials are incorrect.'],
+                ]);
+            }
+            
+            $user = $request->user();
+            $token = $user->createToken('auth_token')->plainTextToken;
+            
+            // Log successful login
+            Log::channel('auth')->info('User logged in', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->header('User-Agent'),
             ]);
+
+            return response()->json([
+                'message' => 'Login successful',
+                'user' => $user,
+                'access_token' => $token,
+                'token_type' => 'Bearer',
+            ]);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            // Log unexpected errors during login
+            Log::channel('auth')->error('Login error', [
+                'email' => $request->email,
+                'ip_address' => $request->ip(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            throw $e;
         }
-
-        $user = $request->user();
-        $token = $user->createToken('auth_token')->plainTextToken;
-
-        return response()->json([
-            'message' => 'Login successful',
-            'user' => $user,
-            'access_token' => $token,
-            'token_type' => 'Bearer',
-        ]);
     }
 
     /**
@@ -79,7 +117,15 @@ class AuthController extends Controller
      */
     public function logout(Request $request)
     {
+        $user = $request->user();
         $request->user()->currentAccessToken()->delete();
+        
+        // Log logout
+        Log::channel('auth')->info('User logged out', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'ip_address' => $request->ip(),
+        ]);
 
         return response()->json([
             'message' => 'Successfully logged out'
@@ -94,8 +140,16 @@ class AuthController extends Controller
      */
     public function profile(Request $request)
     {
+        $user = $request->user();
+        
+        // Log profile access
+        Log::channel('auth')->info('Profile accessed', [
+            'user_id' => $user->id,
+            'ip_address' => $request->ip(),
+        ]);
+        
         return response()->json([
-            'user' => $request->user(),
+            'user' => $user,
         ]);
     }
 }
