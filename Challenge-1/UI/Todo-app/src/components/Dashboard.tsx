@@ -1,116 +1,142 @@
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Task } from '../types';
+import { TasksAPI } from '../services/api';
+import TaskFilters from './TaskFilters';
+import TaskList from './TaskList';
+import TaskForm from './TaskForm';
 
-interface Todo {
-  id: number;
-  text: string;
-  completed: boolean;
-}
-
-const Dashboard = () => {
+const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [todos, setTodos] = useState<Todo[]>([
-    { id: 1, text: 'Learn React', completed: true },
-    { id: 2, text: 'Build a Todo App', completed: false },
-    { id: 3, text: 'Deploy to production', completed: false },
-  ]);
-  const [newTodo, setNewTodo] = useState('');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  const handleAddTodo = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTodo.trim()) return;
-    
-    const newItem: Todo = {
-      id: Date.now(),
-      text: newTodo,
-      completed: false,
+  // Extract unique categories from tasks
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const response = await TasksAPI.getAll();
+        const tasks = response.data;
+        const uniqueCategories = Array.from(
+          new Set(
+            tasks
+              .map(task => task.category)
+              .filter((category): category is string => !!category)
+          )
+        );
+        setCategories(uniqueCategories);
+      } catch (err) {
+        console.error('Error fetching categories:', err);
+      }
     };
-    
-    setTodos([...todos, newItem]);
-    setNewTodo('');
+
+    fetchCategories();
+  }, [refreshTrigger]);
+
+  const handleFilterChange = (newFilter: 'all' | 'pending' | 'completed') => {
+    setFilter(newFilter);
   };
 
-  const toggleTodo = (id: number) => {
-    setTodos(
-      todos.map(todo => 
-        todo.id === id ? { ...todo, completed: !todo.completed } : todo
-      )
-    );
+  const handleCategoryChange = (category: string | null) => {
+    setActiveCategory(category);
   };
 
-  const deleteTodo = (id: number) => {
-    setTodos(todos.filter(todo => todo.id !== id));
+  const handleAddTask = () => {
+    setEditingTask(undefined);
+    setShowForm(true);
+  };
+
+  const handleEditTask = (task: Task) => {
+    setEditingTask(task);
+    setShowForm(true);
+  };
+
+  const handleFormComplete = () => {
+    setShowForm(false);
+    setEditingTask(undefined);
+    // Trigger a refresh of the task list
+    setRefreshTrigger(prev => prev + 1);
+  };
+
+  const handleFormCancel = () => {
+    setShowForm(false);
+    setEditingTask(undefined);
   };
 
   const handleLogout = () => {
-    // Here you would clear any authentication tokens/state
+    // Clear token from localStorage
+    localStorage.removeItem('token');
+    // Redirect to login page
     navigate('/login');
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-6 flex flex-col sm:py-12">
-      <div className="max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-gray-900">Todo Dashboard</h1>
-          <button 
-            onClick={handleLogout}
-            className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-          >
-            Logout
-          </button>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <h1 className="text-2xl font-bold text-gray-900">Todo Dashboard</h1>
+            <div className="flex space-x-4">
+              <button
+                onClick={handleAddTask}
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <svg
+                  className="-ml-1 mr-2 h-5 w-5"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                New Task
+              </button>
+              <button
+                onClick={handleLogout}
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
         </div>
+      </header>
 
-        <div className="mt-8">
-          <form onSubmit={handleAddTodo} className="flex">
-            <input
-              type="text"
-              placeholder="Add a new todo"
-              className="flex-1 border-gray-300 border rounded-l px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              value={newTodo}
-              onChange={e => setNewTodo(e.target.value)}
+      {/* Main content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {showForm ? (
+          <TaskForm
+            task={editingTask}
+            onComplete={handleFormComplete}
+            onCancel={handleFormCancel}
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-6">
+            <TaskFilters
+              activeFilter={filter}
+              activeCategory={activeCategory}
+              categories={categories}
+              onFilterChange={handleFilterChange}
+              onCategoryChange={handleCategoryChange}
             />
-            <button 
-              type="submit"
-              className="bg-blue-500 text-white px-4 py-2 rounded-r hover:bg-blue-600"
-            >
-              Add
-            </button>
-          </form>
-        </div>
-
-        <div className="mt-6">
-          <ul className="bg-white shadow overflow-hidden rounded-md divide-y divide-gray-200">
-            {todos.map(todo => (
-              <li key={todo.id} className="px-6 py-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={todo.completed}
-                      onChange={() => toggleTodo(todo.id)}
-                      className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      aria-label={`Mark "${todo.text}" as ${todo.completed ? 'incomplete' : 'complete'}`}
-                    />
-                    <span 
-                      className={`ml-3 ${
-                        todo.completed ? 'line-through text-gray-500' : 'text-gray-900'
-                      }`}
-                    >
-                      {todo.text}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => deleteTodo(todo.id)}
-                    className="text-red-500 hover:text-red-700"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
+            <TaskList
+              filter={filter}
+              category={activeCategory}
+              onEditTask={handleEditTask}
+              refreshTrigger={refreshTrigger}
+            />
+          </div>
+        )}
+      </main>
     </div>
   );
 };

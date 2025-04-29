@@ -1,9 +1,16 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AuthAPI } from '../services/api';
+import axios, { AxiosError } from 'axios';
 
 interface FormData {
   email: string;
   password: string;
+}
+
+interface ApiErrorResponse {
+  message?: string;
+  errors?: Record<string, string[]>;
 }
 
 const Login = () => {
@@ -25,7 +32,7 @@ const Login = () => {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
     
@@ -45,13 +52,49 @@ const Login = () => {
     // Show loading state
     setIsLoading(true);
     
-    // Mock API call
-    setTimeout(() => {
+    try {
+      // Call the login API
+      const response = await AuthAPI.login(formData.email, formData.password);
+      
+      // Store the token from the response
+      if (response.data?.token) {
+        localStorage.setItem('token', response.data.token);
+        
+        // Remember me functionality
+        if (rememberMe) {
+          localStorage.setItem('rememberedEmail', formData.email);
+        } else {
+          localStorage.removeItem('rememberedEmail');
+        }
+        
+        // Navigate to dashboard
+        navigate('/dashboard');
+      } else {
+        throw new Error('No token received');
+      }
+    } catch (err: unknown) {
+      console.error('Login error:', err);
+      
+      // Type guard to check if the error is an Axios error
+      if (axios.isAxiosError(err)) {
+        const axiosError = err as AxiosError<ApiErrorResponse>;
+        setError(axiosError.response?.data?.message || 'Login failed. Please check your credentials.');
+      } else {
+        setError('An unexpected error occurred. Please try again.');
+      }
+    } finally {
       setIsLoading(false);
-      // Navigate to dashboard after successful login
-      navigate('/dashboard');
-    }, 1500);
+    }
   };
+
+  // Check for remembered email on component mount
+  useState(() => {
+    const rememberedEmail = localStorage.getItem('rememberedEmail');
+    if (rememberedEmail) {
+      setFormData(prev => ({ ...prev, email: rememberedEmail }));
+      setRememberMe(true);
+    }
+  });
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4 sm:px-6 lg:px-8">

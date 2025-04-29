@@ -1,11 +1,18 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AuthAPI } from '../services/api';
+import axios, { AxiosError } from 'axios';
 
 interface SignUpFormData {
   name: string;
   email: string;
   password: string;
   confirmPassword: string;
+}
+
+interface ApiErrorResponse {
+  message?: string;
+  errors?: Record<string, string[]>;
 }
 
 const SignUp = () => {
@@ -28,7 +35,7 @@ const SignUp = () => {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
     
@@ -59,13 +66,45 @@ const SignUp = () => {
     // Show loading state
     setIsLoading(true);
     
-    // Mock API call
-    setTimeout(() => {
+    try {
+      // Call the registration API
+      const response = await AuthAPI.register(
+        formData.name,
+        formData.email,
+        formData.password,
+        formData.confirmPassword
+      );
+      
+      // Store the token
+      if (response.data?.token) {
+        localStorage.setItem('token', response.data.token);
+        
+        // Navigate to dashboard after successful signup
+        navigate('/dashboard');
+      } else {
+        throw new Error('No token received');
+      }
+    } catch (err: unknown) {
+      console.error('Registration error:', err);
+      
+      // Type guard to check if the error is an Axios error
+      if (axios.isAxiosError(err)) {
+        const axiosError = err as AxiosError<ApiErrorResponse>;
+        
+        // Handle validation errors from Laravel backend
+        if (axiosError.response?.data?.errors) {
+          const validationErrors = axiosError.response.data.errors;
+          const firstError = Object.values(validationErrors)[0];
+          setError(Array.isArray(firstError) ? firstError[0] : String(firstError));
+        } else {
+          setError(axiosError.response?.data?.message || 'Registration failed. Please try again.');
+        }
+      } else {
+        setError('An unexpected error occurred. Please try again.');
+      }
+    } finally {
       setIsLoading(false);
-      console.log('SignUp successful:', formData);
-      // Navigate to dashboard after successful signup
-      navigate('/dashboard');
-    }, 1500);
+    }
   };
 
   return (
