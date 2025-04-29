@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Task;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Gate;
 
 class TaskController extends Controller
 {
@@ -53,7 +54,9 @@ class TaskController extends Controller
     public function show(Task $task): JsonResponse
     {
         // Ensure user can only access their own tasks
-        $this->authorize('view', $task);
+        if (Gate::denies('view', $task)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
 
         return response()->json([
             'task' => $task
@@ -66,7 +69,9 @@ class TaskController extends Controller
     public function update(Request $request, Task $task): JsonResponse
     {
         // Ensure user can only update their own tasks
-        $this->authorize('update', $task);
+        if (Gate::denies('update', $task)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
 
         $validated = $request->validate([
             'title' => 'sometimes|required|string|max:255',
@@ -90,7 +95,9 @@ class TaskController extends Controller
     public function destroy(Task $task): JsonResponse
     {
         // Ensure user can only delete their own tasks
-        $this->authorize('delete', $task);
+        if (Gate::denies('delete', $task)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
 
         $task->delete();
         
