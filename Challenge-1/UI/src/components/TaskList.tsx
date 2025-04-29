@@ -3,7 +3,7 @@ import { Task } from '../types';
 import { TasksAPI } from '../services/api';
 
 interface TaskListProps {
-  filter: 'all' | 'pending' | 'completed';
+  filter: 'all' | 'pending' | 'in_progress' | 'completed';
   category: string | null;
   onEditTask: (task: Task) => void;
   refreshTrigger: number;
@@ -30,7 +30,14 @@ const TaskList: React.FC<TaskListProps> = ({ filter, category, onEditTask, refre
           response = await TasksAPI.getAll();
         }
         
-        setTasks(response.data);
+        // Handle the nested response format from the API
+        if (response.data && response.data.tasks) {
+          setTasks(response.data.tasks);
+          console.log('Tasks fetched successfully:', response.data.tasks);
+        } else {
+          console.error('Unexpected response format:', response.data);
+          setError('Received unexpected data format from server');
+        }
       } catch (err) {
         console.error('Error fetching tasks:', err);
         setError('Failed to load tasks. Please try again later.');
@@ -44,7 +51,17 @@ const TaskList: React.FC<TaskListProps> = ({ filter, category, onEditTask, refre
 
   const handleStatusToggle = async (task: Task) => {
     try {
-      const newStatus = task.status === 'completed' ? 'pending' : 'completed';
+      // Determine the next status in the workflow
+      let newStatus: 'pending' | 'in_progress' | 'completed';
+      
+      if (task.status === 'pending') {
+        newStatus = 'in_progress';
+      } else if (task.status === 'in_progress') {
+        newStatus = 'completed';
+      } else {
+        newStatus = 'pending'; // Reset to pending if completed
+      }
+      
       await TasksAPI.updateStatus(task.id, newStatus);
       
       // Update local state
@@ -136,19 +153,28 @@ const TaskList: React.FC<TaskListProps> = ({ filter, category, onEditTask, refre
                   <div className="mt-1 text-sm text-gray-500 line-clamp-2">
                     {task.description}
                   </div>
-                  <div className="mt-2 flex items-center space-x-2">
+                  <div className="mt-2 flex items-center space-x-2 flex-wrap">
+                    {/* Status badge */}
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      task.status === 'completed' 
+                        ? 'bg-green-100 text-green-800' 
+                        : task.status === 'in_progress'
+                          ? 'bg-orange-100 text-orange-800'
+                          : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {task.status === 'in_progress' ? 'In Progress' : task.status.charAt(0).toUpperCase() + task.status.slice(1)}
+                    </span>
+                    
                     {task.category && (
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                         {task.category}
                       </span>
                     )}
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                      ${task.priority === 'high' ? 'bg-red-100 text-red-800' :
-                        task.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-green-100 text-green-800'}`}
-                    >
-                      {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)} Priority
-                    </span>
+                    {task.is_important && (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                        Important
+                      </span>
+                    )}
                     {task.due_date && (
                       <span className="inline-flex items-center text-xs text-gray-500">
                         <svg className="mr-1.5 h-3 w-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">

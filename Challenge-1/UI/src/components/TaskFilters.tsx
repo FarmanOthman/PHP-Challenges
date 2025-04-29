@@ -1,10 +1,10 @@
 import React from 'react';
 
 interface TaskFiltersProps {
-  activeFilter: 'all' | 'pending' | 'completed';
+  activeFilter: 'all' | 'pending' | 'in_progress' | 'completed';
   activeCategory: string | null;
   categories: string[];
-  onFilterChange: (filter: 'all' | 'pending' | 'completed') => void;
+  onFilterChange: (filter: 'all' | 'pending' | 'in_progress' | 'completed') => void;
   onCategoryChange: (category: string | null) => void;
 }
 
@@ -19,7 +19,7 @@ const TaskFilters: React.FC<TaskFiltersProps> = ({
     <div className="bg-white rounded-lg shadow-md p-4 mb-6">
       <div className="mb-4">
         <h3 className="text-lg font-medium text-gray-900 mb-2">Status</h3>
-        <div className="flex space-x-2">
+        <div className="flex space-x-2 flex-wrap gap-y-2">
           <button
             onClick={() => onFilterChange('all')}
             className={`px-4 py-2 rounded-md text-sm font-medium ${
@@ -39,6 +39,16 @@ const TaskFilters: React.FC<TaskFiltersProps> = ({
             }`}
           >
             Pending
+          </button>
+          <button
+            onClick={() => onFilterChange('in_progress')}
+            className={`px-4 py-2 rounded-md text-sm font-medium ${
+              activeFilter === 'in_progress'
+                ? 'bg-orange-500 text-white'
+                : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+            }`}
+          >
+            In Progress
           </button>
           <button
             onClick={() => onFilterChange('completed')}

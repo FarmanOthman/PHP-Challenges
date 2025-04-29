@@ -13,8 +13,8 @@ interface TaskFormData {
   description: string;
   due_date: string;
   category: string;
-  priority: 'low' | 'medium' | 'high';
-  status: 'pending' | 'completed';
+  status: 'pending' | 'in_progress' | 'completed';
+  is_important: boolean;
 }
 
 const TaskForm: React.FC<TaskFormProps> = ({ task, onComplete, onCancel }) => {
@@ -23,8 +23,8 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onComplete, onCancel }) => {
     description: '',
     due_date: '',
     category: '',
-    priority: 'medium',
     status: 'pending',
+    is_important: false,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,8 +37,8 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onComplete, onCancel }) => {
         description: task.description,
         due_date: task.due_date || '',
         category: task.category || '',
-        priority: task.priority,
         status: task.status,
+        is_important: task.is_important,
       });
     }
   }, [task]);
@@ -46,11 +46,20 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onComplete, onCancel }) => {
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    const { name, value, type } = e.target as HTMLInputElement;
+    
+    // Handle checkbox inputs separately
+    if (type === 'checkbox') {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: (e.target as HTMLInputElement).checked,
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: value,
+      }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -167,23 +176,6 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onComplete, onCancel }) => {
           </div>
 
           <div className="sm:col-span-3">
-            <label htmlFor="priority" className="block text-sm font-medium text-gray-700">
-              Priority
-            </label>
-            <select
-              id="priority"
-              name="priority"
-              value={formData.priority}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-            >
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </div>
-
-          <div className="sm:col-span-3">
             <label htmlFor="status" className="block text-sm font-medium text-gray-700">
               Status
             </label>
@@ -195,8 +187,25 @@ const TaskForm: React.FC<TaskFormProps> = ({ task, onComplete, onCancel }) => {
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             >
               <option value="pending">Pending</option>
+              <option value="in_progress">In Progress</option>
               <option value="completed">Completed</option>
             </select>
+          </div>
+
+          <div className="sm:col-span-3">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                name="is_important"
+                id="is_important"
+                checked={formData.is_important}
+                onChange={handleChange}
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <label htmlFor="is_important" className="ml-2 block text-sm font-medium text-gray-700">
+                Mark as Important
+              </label>
+            </div>
           </div>
         </div>
 
