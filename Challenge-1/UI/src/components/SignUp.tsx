@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AuthAPI } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
 import axios, { AxiosError } from 'axios';
 
 interface SignUpFormData {
@@ -17,6 +17,7 @@ interface ApiErrorResponse {
 
 const SignUp = () => {
   const navigate = useNavigate();
+  const { register, isAuthenticated } = useAuth();
   const [formData, setFormData] = useState<SignUpFormData>({
     name: '',
     email: '',
@@ -26,6 +27,13 @@ const SignUp = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  
+  // Redirect to dashboard if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard');
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -67,23 +75,16 @@ const SignUp = () => {
     setIsLoading(true);
     
     try {
-      // Call the registration API
-      const response = await AuthAPI.register(
+      // Call register from auth context instead of direct API call
+      await register(
         formData.name,
         formData.email,
         formData.password,
         formData.confirmPassword
       );
       
-      // Store the token
-      if (response.data?.token) {
-        localStorage.setItem('token', response.data.token);
-        
-        // Navigate to dashboard after successful signup
-        navigate('/dashboard');
-      } else {
-        throw new Error('No token received');
-      }
+      // Navigate to dashboard (if not already redirected by the auth state change)
+      navigate('/dashboard');
     } catch (err: unknown) {
       console.error('Registration error:', err);
       

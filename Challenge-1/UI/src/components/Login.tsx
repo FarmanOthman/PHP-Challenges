@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AuthAPI } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
 import axios, { AxiosError } from 'axios';
 
 interface FormData {
@@ -15,6 +15,7 @@ interface ApiErrorResponse {
 
 const Login = () => {
   const navigate = useNavigate();
+  const { login, isAuthenticated } = useAuth();
   const [formData, setFormData] = useState<FormData>({
     email: '',
     password: '',
@@ -23,6 +24,20 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  
+  // Redirect to dashboard if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard');
+    }
+    
+    // Check for remembered email on component mount
+    const rememberedEmail = localStorage.getItem('rememberedEmail');
+    if (rememberedEmail) {
+      setFormData(prev => ({ ...prev, email: rememberedEmail }));
+      setRememberMe(true);
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -53,25 +68,18 @@ const Login = () => {
     setIsLoading(true);
     
     try {
-      // Call the login API
-      const response = await AuthAPI.login(formData.email, formData.password);
+      // Call login from auth context instead of direct API call
+      await login(formData.email, formData.password);
       
-      // Store the token from the response
-      if (response.data?.token) {
-        localStorage.setItem('token', response.data.token);
-        
-        // Remember me functionality
-        if (rememberMe) {
-          localStorage.setItem('rememberedEmail', formData.email);
-        } else {
-          localStorage.removeItem('rememberedEmail');
-        }
-        
-        // Navigate to dashboard
-        navigate('/dashboard');
+      // Remember me functionality
+      if (rememberMe) {
+        localStorage.setItem('rememberedEmail', formData.email);
       } else {
-        throw new Error('No token received');
+        localStorage.removeItem('rememberedEmail');
       }
+      
+      // Navigate to dashboard (if not already redirected by the auth state change)
+      navigate('/dashboard');
     } catch (err: unknown) {
       console.error('Login error:', err);
       
@@ -86,15 +94,6 @@ const Login = () => {
       setIsLoading(false);
     }
   };
-
-  // Check for remembered email on component mount
-  useState(() => {
-    const rememberedEmail = localStorage.getItem('rememberedEmail');
-    if (rememberedEmail) {
-      setFormData(prev => ({ ...prev, email: rememberedEmail }));
-      setRememberMe(true);
-    }
-  });
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4 sm:px-6 lg:px-8">
