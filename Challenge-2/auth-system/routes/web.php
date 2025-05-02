@@ -7,7 +7,11 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::get('/', function () {
-    return view('welcome');
+    // Redirect to dashboard if authenticated, otherwise show welcome page
+    if (auth()->check()) {
+        return redirect('/dashboard');
+    }
+    return Inertia::render('Welcome');
 });
 
 Route::get('/dashboard', function () {
