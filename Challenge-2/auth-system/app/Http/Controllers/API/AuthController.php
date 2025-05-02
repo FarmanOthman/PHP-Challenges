@@ -28,7 +28,8 @@ class AuthController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Validation failed',
+                'status' => false,
+                'message' => 'Validation errors',
                 'errors' => $validator->errors()
             ], 422);
         }
@@ -42,10 +43,10 @@ class AuthController extends Controller
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
+            'status' => true,
             'message' => 'User registered successfully',
             'user' => $user,
-            'access_token' => $token,
-            'token_type' => 'Bearer',
+            'token' => $token
         ], 201);
     }
 
@@ -64,26 +65,28 @@ class AuthController extends Controller
 
         if ($validator->fails()) {
             return response()->json([
-                'message' => 'Validation failed',
+                'status' => false,
+                'message' => 'Validation errors',
                 'errors' => $validator->errors()
             ], 422);
         }
 
         if (!Auth::attempt($request->only('email', 'password'))) {
-            throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
-            ]);
+            return response()->json([
+                'status' => false,
+                'message' => 'Invalid login details'
+            ], 401);
         }
 
         $user = User::where('email', $request->email)->firstOrFail();
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'message' => 'Login successful',
+            'status' => true,
+            'message' => 'User logged in successfully',
             'user' => $user,
-            'access_token' => $token,
-            'token_type' => 'Bearer',
-        ]);
+            'token' => $token
+        ], 200);
     }
 
     /**
@@ -95,12 +98,13 @@ class AuthController extends Controller
     public function user(Request $request)
     {
         return response()->json([
-            'user' => $request->user(),
+            'status' => true,
+            'user' => $request->user()
         ]);
     }
 
     /**
-     * Logout user (revoke token).
+     * Logout user (revoke the token).
      *
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\JsonResponse
@@ -108,9 +112,10 @@ class AuthController extends Controller
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();
-
+        
         return response()->json([
-            'message' => 'Successfully logged out'
+            'status' => true,
+            'message' => 'User logged out successfully'
         ]);
     }
 }
