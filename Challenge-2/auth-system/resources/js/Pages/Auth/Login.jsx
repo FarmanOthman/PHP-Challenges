@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import Checkbox from '@/Components/Checkbox';
 import InputError from '@/Components/InputError';
 import InputLabel from '@/Components/InputLabel';
@@ -5,20 +6,54 @@ import PrimaryButton from '@/Components/PrimaryButton';
 import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
+import { useAuth } from '@/Context/AuthContext';
+import axios from 'axios';
 
 export default function Login({ status, canResetPassword }) {
+    const { login: contextLogin, token } = useAuth();
+    const [apiError, setApiError] = useState(null);
+    
     const { data, setData, post, processing, errors, reset } = useForm({
         email: '',
         password: '',
         remember: false,
     });
 
-    const submit = (e) => {
-        e.preventDefault();
+    // If we have a token from context, redirect to dashboard
+    useEffect(() => {
+        if (token) {
+            window.location.href = '/dashboard';
+        }
+    }, [token]);
 
-        post(route('login'), {
-            onFinish: () => reset('password'),
-        });
+    const submit = async (e) => {
+        e.preventDefault();
+        setApiError(null);
+
+        try {
+            // First use Inertia form submission
+            post(route('login'), {
+                onFinish: () => reset('password'),
+                onError: (errors) => {
+                    // If Inertia has validation errors, don't proceed with API login
+                    if (Object.keys(errors).length > 0) {
+                        return;
+                    }
+                }
+            });
+
+            // Also update our auth context
+            await contextLogin({
+                email: data.email,
+                password: data.password
+            });
+        } catch (error) {
+            setApiError(
+                error.response?.data?.message || 
+                'Login failed. Please check your credentials.'
+            );
+            reset('password');
+        }
     };
 
     return (
@@ -28,6 +63,12 @@ export default function Login({ status, canResetPassword }) {
             {status && (
                 <div className="mb-4 text-sm font-medium text-green-600">
                     {status}
+                </div>
+            )}
+
+            {apiError && (
+                <div className="mb-4 text-sm font-medium text-red-600">
+                    {apiError}
                 </div>
             )}
 
@@ -80,19 +121,28 @@ export default function Login({ status, canResetPassword }) {
                     </label>
                 </div>
 
-                <div className="mt-4 flex items-center justify-end">
-                    {canResetPassword && (
-                        <Link
-                            href={route('password.request')}
-                            className="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                        >
-                            Forgot your password?
-                        </Link>
-                    )}
+                <div className="mt-6 flex items-center justify-between">
+                    <Link
+                        href={route('register')}
+                        className="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                    >
+                        Don't have an account? Sign up
+                    </Link>
 
-                    <PrimaryButton className="ms-4" disabled={processing}>
-                        Log in
-                    </PrimaryButton>
+                    <div className="flex items-center">
+                        {canResetPassword && (
+                            <Link
+                                href={route('password.request')}
+                                className="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 mr-4"
+                            >
+                                Forgot your password?
+                            </Link>
+                        )}
+
+                        <PrimaryButton disabled={processing}>
+                            Log in
+                        </PrimaryButton>
+                    </div>
                 </div>
             </form>
         </GuestLayout>
