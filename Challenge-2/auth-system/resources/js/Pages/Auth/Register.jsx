@@ -1,11 +1,16 @@
+import { useState, useEffect } from 'react';
 import InputError from '@/Components/InputError';
 import InputLabel from '@/Components/InputLabel';
 import PrimaryButton from '@/Components/PrimaryButton';
 import TextInput from '@/Components/TextInput';
 import GuestLayout from '@/Layouts/GuestLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
+import { useAuth } from '@/Context/AuthContext';
 
 export default function Register() {
+    const { register: contextRegister, token } = useAuth();
+    const [apiError, setApiError] = useState(null);
+    
     const { data, setData, post, processing, errors, reset } = useForm({
         name: '',
         email: '',
@@ -13,17 +18,52 @@ export default function Register() {
         password_confirmation: '',
     });
 
-    const submit = (e) => {
-        e.preventDefault();
+    // If we have a token from context, redirect to dashboard
+    useEffect(() => {
+        if (token) {
+            window.location.href = '/dashboard';
+        }
+    }, [token]);
 
-        post(route('register'), {
-            onFinish: () => reset('password', 'password_confirmation'),
-        });
+    const submit = async (e) => {
+        e.preventDefault();
+        setApiError(null);
+
+        try {
+            // First use Inertia form submission
+            post(route('register'), {
+                onFinish: () => reset('password', 'password_confirmation'),
+                onError: (errors) => {
+                    // If Inertia has validation errors, don't proceed with API registration
+                    if (Object.keys(errors).length > 0) {
+                        return;
+                    }
+                }
+            });
+
+            // Also update our auth context
+            await contextRegister({
+                name: data.name,
+                email: data.email,
+                password: data.password,
+                password_confirmation: data.password_confirmation
+            });
+        } catch (error) {
+            const errorMessage = error.response?.data?.errors || error.response?.data?.message || 'Registration failed';
+            setApiError(typeof errorMessage === 'object' ? Object.values(errorMessage).flat().join(', ') : errorMessage);
+            reset('password', 'password_confirmation');
+        }
     };
 
     return (
         <GuestLayout>
             <Head title="Register" />
+
+            {apiError && (
+                <div className="mb-4 text-sm font-medium text-red-600">
+                    {apiError}
+                </div>
+            )}
 
             <form onSubmit={submit}>
                 <div>
