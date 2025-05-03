@@ -3,7 +3,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "serve": "concurrently \"php artisan serve\" \"vite\""
     },
     "devDependencies": {
         "@headlessui/react": "^2.0.0",
@@ -24,6 +25,9 @@
     "dependencies": {
         "@tiptap/pm": "^2.11.9",
         "@tiptap/react": "^2.11.9",
-        "@tiptap/starter-kit": "^2.11.9"
+        "@tiptap/starter-kit": "^2.11.9",
+        "date-fns": "^4.1.0",
+        "html-react-parser": "^5.2.3",
+        "react-intersection-observer": "^9.16.0"
     }
 }
