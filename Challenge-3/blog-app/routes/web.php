@@ -7,6 +7,8 @@ use App\Http\Controllers\ProfileController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use App\Services\AzureImageService;
+use Illuminate\Http\Request;
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -16,6 +18,18 @@ Route::get('/', function () {
         'phpVersion' => PHP_VERSION,
     ]);
 });
+
+// Azure SAS token generation endpoint
+Route::middleware(['auth'])
+    ->get('/azure/sas-token', function (Request $request, AzureImageService $azure) {
+        return response()->json(
+            $azure->generateSasToken(
+                $request->input('filename'), 
+                $request->input('permissions', 'w'), 
+                $request->input('expiry', 60)
+            )
+        );
+    });
 
 // Blog post routes
 Route::get('/blog', [PostController::class, 'index'])->name('posts.index');
