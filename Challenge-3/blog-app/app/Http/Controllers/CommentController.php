@@ -7,16 +7,21 @@ use App\Models\Post;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class CommentController extends Controller
 {
+    use AuthorizesRequests;
+
     /**
      * Store a newly created comment in storage.
      */
     public function store(Request $request, Post $post)
     {
-        // Ensure user is authenticated to comment
-        $this->middleware('auth');
+        // Check if user is authenticated
+        if (!Auth::check()) {
+            return redirect()->route('login');
+        }
         
         $validated = $request->validate([
             'content' => 'required|string|min:2',
