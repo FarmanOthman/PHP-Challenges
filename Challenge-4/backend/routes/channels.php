@@ -22,3 +22,21 @@ Broadcast::channel('chat', function () {
 Broadcast::channel('user.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
+
+// Public channel messages
+Broadcast::channel('channel.{channelId}', function () {
+    // All authenticated users can listen to public channels
+    return true;
+});
+
+// Presence channel for rooms (shows who's online)
+Broadcast::channel('room.{roomId}', function ($user) {
+    // Return user information that will be visible to others in the room
+    if ($user) {
+        return [
+            'id' => $user->id,
+            'name' => $user->name
+        ];
+    }
+    return false;
+});
