@@ -1,0 +1,17 @@
+# Ignore database data directories
+/database/mysql/data/
+/database/redis/data/
+
+# Ignore database configuration files that might contain sensitive information
+/database/*.conf
+/database/*.cnf
+
+# But keep the SQL initialization scripts
+!/database/mysql/init.sql
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db

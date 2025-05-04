@@ -1,0 +1,30 @@
+[mysqld]
+# Basic Settings
+port=3306
+user=mysql
+pid-file=/var/run/mysqld/mysqld.pid
+socket=/var/run/mysqld/mysqld.sock
+datadir=/var/lib/mysql
+log-error=/var/log/mysql/error.log
+
+# InnoDB Settings
+innodb_buffer_pool_size=256M
+innodb_log_file_size=64M
+
+# Character Set Settings
+character-set-server=utf8mb4
+collation-server=utf8mb4_unicode_ci
+
+# Connection Settings
+max_connections=100
+wait_timeout=600
+
+# Cache Settings
+query_cache_type=1
+query_cache_size=32M
+
+# Log Settings
+general_log=0
+slow_query_log=1
+slow_query_log_file=/var/log/mysql/mysql-slow.log
+long_query_time=2
