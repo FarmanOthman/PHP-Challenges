@@ -369,4 +369,52 @@ class RoomController extends Controller
             'total' => $members->count()
         ]);
     }
+
+    /**
+     * Update member permissions in a room.
+     */
+    public function updateMemberPermissions(Request $request, string $id, string $userId)
+    {
+        $user = Auth::user();
+        
+        // Find the room
+        $room = Room::findOrFail($id);
+        
+        // Check if user is authorized (admin or creator)
+        $isAdmin = $room->members()->where('users.id', $user->id)
+                       ->wherePivot('is_admin', true)
+                       ->exists();
+        
+        if (!$isAdmin && $room->created_by !== $user->id) {
+            return response()->json(['message' => 'You are not authorized to update member permissions'], 403);
+        }
+        
+        // Validate request data
+        $validated = $request->validate([
+            'is_admin' => 'required|boolean'
+        ]);
+        
+        // Cannot modify creator's permissions
+        if ((int)$userId === $room->created_by) {
+            return response()->json(['message' => 'Cannot modify room creator\'s permissions'], 400);
+        }
+        
+        // Check if target user is a member
+        if (!$room->members()->where('users.id', $userId)->exists()) {
+            return response()->json(['message' => 'User is not a member of this room'], 404);
+        }
+        
+        // Update member's admin status
+        $room->members()->updateExistingPivot($userId, [
+            'is_admin' => $validated['is_admin']
+        ]);
+        
+        // Reload members for response
+        $room->load('members:id,name,email');
+        
+        return response()->json([
+            'room' => $room,
+            'message' => 'Member permissions updated successfully'
+        ]);
+    }
 }
