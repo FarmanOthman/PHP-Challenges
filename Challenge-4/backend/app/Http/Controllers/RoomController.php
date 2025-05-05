@@ -1,0 +1,259 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Room;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
+
+class RoomController extends Controller
+{
+    /**
+     * Display a listing of the rooms.
+     */
+    public function index(Request $request)
+    {
+        // Get user for member filtering
+        $user = Auth::user();
+        
+        // Start query
+        $query = Room::query();
+        
+        // Filter by membership if requested
+        if ($request->has('member') && $request->boolean('member')) {
+            $query->whereHas('members', function ($q) use ($user) {
+                $q->where('users.id', $user->id);
+            });
+        }
+        
+        // Filter by room type
+        if ($request->has('type')) {
+            $query->where('type', $request->type);
+        }
+        
+        // Handle private rooms - only show if user is a member
+        $query->where(function ($q) use ($user) {
+            $q->where('is_private', false)
+              ->orWhereHas('members', function ($q) use ($user) {
+                  $q->where('users.id', $user->id);
+              });
+        });
+        
+        // Get paginated results with relationships
+        $rooms = $query->with(['creator:id,name,email', 'members:id,name,email'])
+                       ->paginate($request->input('per_page', 15));
+        
+        return response()->json(['rooms' => $rooms]);
+    }
+
+    /**
+     * Store a newly created room in storage.
+     */
+    public function store(Request $request)
+    {
+        // Validate request data
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'type' => ['required', 'string', Rule::in(['public', 'private', 'direct'])],
+            'is_private' => 'boolean',
+            'members' => 'nullable|array',
+            'members.*' => 'exists:users,id',
+        ]);
+        
+        // Get current user
+        $user = Auth::user();
+        
+        // Create the room
+        $room = Room::create([
+            'name' => $validated['name'],
+            'description' => $validated['description'] ?? null,
+            'type' => $validated['type'],
+            'created_by' => $user->id,
+            'is_private' => $validated['is_private'] ?? false,
+        ]);
+        
+        // Add the creator as a member and admin
+        $room->members()->attach($user->id, ['is_admin' => true]);
+        
+        // Add members if provided
+        if (!empty($validated['members'])) {
+            $memberIds = array_diff($validated['members'], [$user->id]);
+            if (!empty($memberIds)) {
+                $room->members()->attach($memberIds, ['is_admin' => false]);
+            }
+        }
+        
+        // Load relationships
+        $room->load(['creator:id,name,email', 'members:id,name,email']);
+        
+        return response()->json([
+            'room' => $room,
+            'message' => 'Room created successfully'
+        ], 201);
+    }
+
+    /**
+     * Display the specified room.
+     */
+    public function show(string $id)
+    {
+        $user = Auth::user();
+        
+        // Find the room with relationships
+        $room = Room::with(['creator:id,name,email', 'members:id,name,email'])
+                    ->findOrFail($id);
+        
+        // Check if room is private and user is not a member
+        if ($room->is_private && !$room->members()->where('users.id', $user->id)->exists()) {
+            return response()->json(['message' => 'You do not have access to this room'], 403);
+        }
+        
+        return response()->json(['room' => $room]);
+    }
+
+    /**
+     * Update the specified room in storage.
+     */
+    public function update(Request $request, string $id)
+    {
+        $user = Auth::user();
+        
+        // Find the room
+        $room = Room::findOrFail($id);
+        
+        // Check if user is authorized to update (admin or creator)
+        $isAdmin = $room->members()->where('users.id', $user->id)
+                        ->wherePivot('is_admin', true)
+                        ->exists();
+        
+        if (!$isAdmin && $room->created_by !== $user->id) {
+            return response()->json(['message' => 'You are not authorized to update this room'], 403);
+        }
+        
+        // Validate request data
+        $validated = $request->validate([
+            'name' => 'sometimes|required|string|max:255',
+            'description' => 'nullable|string',
+            'type' => ['sometimes', 'required', 'string', Rule::in(['public', 'private', 'direct'])],
+            'is_private' => 'sometimes|boolean',
+        ]);
+        
+        // Update the room
+        $room->update($validated);
+        
+        // Reload relationships
+        $room->load(['creator:id,name,email', 'members:id,name,email']);
+        
+        return response()->json([
+            'room' => $room,
+            'message' => 'Room updated successfully'
+        ]);
+    }
+
+    /**
+     * Remove the specified room from storage.
+     */
+    public function destroy(string $id)
+    {
+        $user = Auth::user();
+        
+        // Find the room
+        $room = Room::findOrFail($id);
+        
+        // Check if user is authorized to delete (creator or admin)
+        if ($room->created_by !== $user->id && !$user->is_admin) {
+            return response()->json(['message' => 'You are not authorized to delete this room'], 403);
+        }
+        
+        // Delete the room (soft delete)
+        $room->delete();
+        
+        return response()->json(['message' => 'Room deleted successfully']);
+    }
+    
+    /**
+     * Add members to a room.
+     */
+    public function addMembers(Request $request, string $id)
+    {
+        $user = Auth::user();
+        
+        // Find the room
+        $room = Room::findOrFail($id);
+        
+        // Check if user is authorized (admin or creator)
+        $isAdmin = $room->members()->where('users.id', $user->id)
+                        ->wherePivot('is_admin', true)
+                        ->exists();
+        
+        if (!$isAdmin && $room->created_by !== $user->id) {
+            return response()->json(['message' => 'You are not authorized to add members to this room'], 403);
+        }
+        
+        // Validate request data
+        $validated = $request->validate([
+            'member_ids' => 'required|array',
+            'member_ids.*' => 'exists:users,id',
+            'is_admin' => 'boolean',
+        ]);
+        
+        // Add members
+        $memberData = array_fill_keys($validated['member_ids'], [
+            'is_admin' => $validated['is_admin'] ?? false,
+        ]);
+        $room->members()->attach($memberData);
+        
+        // Reload members
+        $room->load('members:id,name,email');
+        
+        return response()->json([
+            'room' => $room,
+            'message' => 'Members added successfully'
+        ]);
+    }
+    
+    /**
+     * Remove members from a room.
+     */
+    public function removeMembers(Request $request, string $id)
+    {
+        $user = Auth::user();
+        
+        // Find the room
+        $room = Room::findOrFail($id);
+        
+        // Check if user is authorized (admin or creator)
+        $isAdmin = $room->members()->where('users.id', $user->id)
+                        ->wherePivot('is_admin', true)
+                        ->exists();
+        
+        if (!$isAdmin && $room->created_by !== $user->id) {
+            return response()->json(['message' => 'You are not authorized to remove members from this room'], 403);
+        }
+        
+        // Validate request data
+        $validated = $request->validate([
+            'member_ids' => 'required|array',
+            'member_ids.*' => 'exists:users,id',
+        ]);
+        
+        // Cannot remove creator
+        if (in_array($room->created_by, $validated['member_ids'])) {
+            return response()->json(['message' => 'Cannot remove the room creator'], 400);
+        }
+        
+        // Remove members
+        $room->members()->detach($validated['member_ids']);
+        
+        // Reload members
+        $room->load('members:id,name,email');
+        
+        return response()->json([
+            'room' => $room,
+            'message' => 'Members removed successfully'
+        ]);
+    }
+}

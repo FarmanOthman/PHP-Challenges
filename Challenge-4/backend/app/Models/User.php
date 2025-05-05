@@ -83,4 +83,47 @@ class User extends Authenticatable
     {
         return $this->receivedMessages()->unread();
     }
+    
+    /**
+     * Get the rooms created by this user.
+     */
+    public function createdRooms()
+    {
+        return $this->hasMany(Room::class, 'created_by');
+    }
+    
+    /**
+     * Get the rooms this user is a member of.
+     */
+    public function rooms()
+    {
+        return $this->belongsToMany(Room::class, 'room_user')
+                    ->withTimestamps()
+                    ->withPivot('is_admin');
+    }
+    
+    /**
+     * Check if the user is a member of a specific room.
+     *
+     * @param int $roomId
+     * @return bool
+     */
+    public function isMemberOfRoom(int $roomId): bool
+    {
+        return $this->rooms()->where('rooms.id', $roomId)->exists();
+    }
+    
+    /**
+     * Check if the user is an admin of a specific room.
+     *
+     * @param int $roomId
+     * @return bool
+     */
+    public function isRoomAdmin(int $roomId): bool
+    {
+        return $this->rooms()
+                    ->where('rooms.id', $roomId)
+                    ->wherePivot('is_admin', true)
+                    ->exists();
+    }
 }

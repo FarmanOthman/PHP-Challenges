@@ -2,6 +2,7 @@
 
 use App\Events\MessageSent;
 use App\Http\Controllers\MessageController;
+use App\Http\Controllers\RoomController;
 use App\Models\Message;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -53,4 +54,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // Additional message routes
     Route::post('/messages/{id}/read', [MessageController::class, 'markAsRead']);
     Route::get('/messages/unread', [MessageController::class, 'index'])->defaults('unread', true);
+
+    // Room routes
+    Route::apiResource('rooms', RoomController::class);
+    
+    // Additional room management routes
+    Route::post('/rooms/{id}/members', [RoomController::class, 'addMembers']);
+    Route::delete('/rooms/{id}/members', [RoomController::class, 'removeMembers']);
 });
