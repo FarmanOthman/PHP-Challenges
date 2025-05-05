@@ -167,4 +167,25 @@ class MessageController extends Controller
             'message' => 'Message deleted successfully'
         ]);
     }
+
+    /**
+     * Get room invitations for the current user.
+     */
+    public function getInvitations(Request $request)
+    {
+        $user = Auth::user();
+        
+        // Get messages that are room invitations
+        $invitations = Message::with('user')
+            ->where('recipient_id', $user->id)
+            ->where('recipient_type', 'user')
+            ->where('content', 'like', '%You have been invited to join the room:%')
+            ->latest()
+            ->paginate($request->input('per_page', 15));
+        
+        return response()->json([
+            'invitations' => $invitations,
+            'total' => $invitations->total()
+        ]);
+    }
 }
