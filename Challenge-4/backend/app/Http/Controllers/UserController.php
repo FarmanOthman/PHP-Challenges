@@ -47,4 +47,74 @@ class UserController extends Controller
     {
         //
     }
+
+    /**
+     * Get list of online users
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function online(Request $request)
+    {
+        $rooms = app('pusher')->presence_channels();
+        $online_users = [];
+        
+        foreach ($rooms as $room => $presence) {
+            if (strpos($room, 'presence-room.') === 0) {
+                foreach ($presence->users as $user) {
+                    $online_users[$user->id] = $user;
+                }
+            }
+        }
+        
+        return response()->json(array_values($online_users));
+    }
+
+    /**
+     * Update user's status
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function updateStatus(Request $request)
+    {
+        $validated = $request->validate([
+            'status' => 'required|string|max:255',
+        ]);
+
+        $user = $request->user();
+        $user->status = $validated['status'];
+        $user->save();
+
+        return response()->json([
+            'message' => 'Status updated successfully',
+            'status' => $user->status
+        ]);
+    }
+
+    /**
+     * Search for users
+     */
+    public function search(Request $request)
+    {
+        $query = $request->get('query');
+        
+        if (!$query) {
+            return response()->json([
+                'users' => []
+            ]);
+        }
+        
+        $users = User::where('id', '!=', $request->user()->id)
+            ->where(function($q) use ($query) {
+                $q->where('name', 'like', "%{$query}%")
+                  ->orWhere('email', 'like', "%{$query}%")
+                  ->orWhere('status', 'like', "%{$query}%");
+            })
+            ->get(['id', 'name', 'email', 'status']);
+            
+        return response()->json([
+            'users' => $users
+        ]);
+    }
 }
