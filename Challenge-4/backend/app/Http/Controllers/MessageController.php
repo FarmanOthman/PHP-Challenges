@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Events\MessageSent;
 use App\Http\Controllers\Controller;
 use App\Models\Message;
+use App\Models\Room;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -187,5 +188,60 @@ class MessageController extends Controller
             'invitations' => $invitations,
             'total' => $invitations->total()
         ]);
+    }
+
+    /**
+     * Respond to a room invitation.
+     */
+    public function respondToInvitation(Request $request, string $id)
+    {
+        $user = Auth::user();
+        
+        // Find the invitation message
+        $invitation = Message::where('id', $id)
+            ->where('recipient_id', $user->id)
+            ->where('recipient_type', 'user')
+            ->where('content', 'like', '%You have been invited to join the room:%')
+            ->firstOrFail();
+        
+        // Validate request data
+        $validated = $request->validate([
+            'accepted' => 'required|boolean'
+        ]);
+        
+        // Extract room name from the invitation message
+        preg_match('/join the room: (.+)$/', $invitation->content, $matches);
+        $roomName = $matches[1] ?? null;
+        
+        // Find the room
+        $room = Room::where('name', $roomName)->firstOrFail();
+        
+        // Check if user is already a member
+        if ($room->members()->where('users.id', $user->id)->exists()) {
+            return response()->json(['message' => 'You are already a member of this room'], 400);
+        }
+        
+        if ($validated['accepted']) {
+            // Join the room as a non-admin member
+            $room->members()->attach($user->id, ['is_admin' => false]);
+            
+            // Mark invitation as read
+            $invitation->markAsRead();
+            
+            // Reload room data with members
+            $room->load('members:id,name,email');
+            
+            return response()->json([
+                'message' => 'Successfully joined the room',
+                'room' => $room
+            ]);
+        } else {
+            // Just mark the invitation as read if declined
+            $invitation->markAsRead();
+            
+            return response()->json([
+                'message' => 'Room invitation declined'
+            ]);
+        }
     }
 }
