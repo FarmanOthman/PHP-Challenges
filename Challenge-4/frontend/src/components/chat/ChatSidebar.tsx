@@ -1,14 +1,12 @@
 import { Room } from '../../types/chat';
-import { useChatStore } from '../../store/chatStore';
 
 interface ChatSidebarProps {
   rooms: Room[];
   activeRoomId: string | null;
+  onRoomSelect: (roomId: string) => void;
 }
 
-const ChatSidebar = ({ rooms, activeRoomId }: ChatSidebarProps) => {
-  const { setActiveRoom } = useChatStore();
-
+const ChatSidebar = ({ rooms, activeRoomId, onRoomSelect }: ChatSidebarProps) => {
   return (
     <div className="h-full flex flex-col">
       <div className="p-4 border-b">
@@ -25,7 +23,7 @@ const ChatSidebar = ({ rooms, activeRoomId }: ChatSidebarProps) => {
             {rooms.map((room) => (
               <li 
                 key={room.id}
-                onClick={() => setActiveRoom(room.id)}
+                onClick={() => onRoomSelect(room.id)}
                 className={`p-4 border-b cursor-pointer hover:bg-gray-100 ${
                   activeRoomId === room.id ? 'bg-indigo-50' : ''
                 }`}

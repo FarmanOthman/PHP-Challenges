@@ -1,26 +1,28 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth'; // Updated import path
+import { useAuth } from '../hooks/useAuth'; // Fixed import path
 import { useChatStore } from '../store/chatStore';
 import socketService from '../services/socket';
 import ChatSidebar from '../components/chat/ChatSidebar';
 import MessageList from '../components/chat/MessageList';
 import MessageInput from '../components/chat/MessageInput';
 import OnlineUsers from '../components/chat/OnlineUsers';
-import { User } from '../types/chat'; // Import User type
 
 const Chat = () => {
   const { user, token, isAuthenticated, loading: authLoading } = useAuth();
   const { 
     rooms,
     activeRoomId, 
-    messages, 
-    onlineUsers,
+    messages,
+    loading,
+    error,
     fetchRooms,
+    setActiveRoom,
     addMessage,
     updateOnlineStatus
   } = useChatStore();
   
+  const [socketInitialized, setSocketInitialized] = useState(false);
   const navigate = useNavigate();
 
   // Check if user is authenticated
@@ -30,56 +32,80 @@ const Chat = () => {
     }
   }, [authLoading, isAuthenticated, navigate]);
 
-  // Setup socket connection and listeners
+  // Setup socket connection and fetch initial data
   useEffect(() => {
-    if (!token) return;
+    if (!token || !user || socketInitialized) return;
 
-    const setupSocket = async () => {
+    const initializeChat = async () => {
       try {
+        // Initialize socket connection
         await socketService.connect(token);
-        
-        // Setup listeners
+        setSocketInitialized(true);
+
+        // Setup message listener
         socketService.onNewMessage((message) => {
           addMessage(message);
         });
-        
-        socketService.onPresenceChange((data) => {
-          updateOnlineStatus(data.userId, data.status === 'online');
+
+        // Setup presence listener
+        socketService.onPresenceChange(({ userId, status }) => {
+          updateOnlineStatus(userId, status === 'online');
         });
+
+        // Fetch rooms
+        await fetchRooms();
+
       } catch (error) {
-        console.error('Failed to connect to socket:', error);
+        console.error('Failed to initialize chat:', error);
       }
     };
 
-    setupSocket();
+    initializeChat();
 
-    // Fetch rooms
-    fetchRooms();
-
-    // Cleanup
+    // Cleanup function
     return () => {
-      socketService.disconnect();
+      if (socketInitialized) {
+        socketService.disconnect();
+        setSocketInitialized(false);
+      }
     };
-  }, [token, addMessage, updateOnlineStatus, fetchRooms]);
+  }, [token, user, socketInitialized, addMessage, updateOnlineStatus, fetchRooms]);
 
-  // Show loading or not authenticated message
-  if (authLoading) {
-    return <div className="flex items-center justify-center h-screen">Loading...</div>;
+  // Show loading state
+  if (authLoading || loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
   }
 
+  // Show error state
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-screen text-red-500">
+        {error}
+      </div>
+    );
+  }
+
+  // Show not authenticated message
   if (!isAuthenticated) {
     return null; // Will redirect via useEffect
   }
 
   // Get active room messages
   const activeRoomMessages = activeRoomId ? messages[activeRoomId] || [] : [];
-  const activeRoom = rooms.find(room => room.id === activeRoomId);
 
   return (
     <div className="flex h-screen bg-gray-100">
-      {/* Sidebar - Room list */}
+      {/* Chat sidebar */}
       <div className="w-64 bg-white border-r">
-        <ChatSidebar rooms={rooms} activeRoomId={activeRoomId} />
+        <ChatSidebar 
+          rooms={rooms}
+          activeRoomId={activeRoomId}
+          onRoomSelect={setActiveRoom}
+        />
       </div>
 
       {/* Main chat area */}
@@ -87,27 +113,18 @@ const Chat = () => {
         {activeRoomId ? (
           <>
             {/* Room header */}
-            <div className="bg-white p-4 border-b flex justify-between items-center">
-              <h2 className="text-xl font-semibold">{activeRoom?.name || 'Chat'}</h2>
-              
-              {/* Online status indicator - use is_private and members */}
-              {activeRoom?.is_private && activeRoom.members.length === 2 && (
-                <span className="flex items-center">
-                  {activeRoom.members
-                    .filter((u: User) => u.id !== user?.id) // Add User type
-                    .map((otherUser: User) => ( // Add User type
-                      <span key={otherUser.id} className="flex items-center">
-                        <span className={`w-2 h-2 rounded-full mr-2 ${onlineUsers[otherUser.id] ? 'bg-green-500' : 'bg-gray-400'}`}></span>
-                        {onlineUsers[otherUser.id] ? 'Online' : 'Offline'}
-                      </span>
-                    ))}
-                </span>
-              )}
+            <div className="bg-white p-4 border-b">
+              <h2 className="text-xl font-semibold">
+                {rooms.find(room => room.id === activeRoomId)?.name || 'Chat'}
+              </h2>
             </div>
-            
+
             {/* Messages area */}
-            <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
-              <MessageList messages={activeRoomMessages} currentUserId={user?.id || 0} />
+            <div className="flex-1 overflow-y-auto p-4">
+              <MessageList 
+                messages={activeRoomMessages}
+                currentUserId={user?.id || 0}
+              />
             </div>
             
             {/* Message input */}
@@ -116,16 +133,14 @@ const Chat = () => {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center text-gray-500">
-              <p className="text-xl">Select a chat to start messaging</p>
-            </div>
+          <div className="flex items-center justify-center h-full text-gray-500">
+            Select a room to start chatting
           </div>
         )}
       </div>
 
       {/* Online users sidebar */}
-      <div className="w-64 bg-white border-l hidden md:block">
+      <div className="w-48 bg-white border-l">
         <OnlineUsers />
       </div>
     </div>
