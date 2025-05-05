@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Room;
 use App\Models\User;
+use App\Models\Message;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -280,5 +281,30 @@ class RoomController extends Controller
         ))->toOthers();
 
         return response()->json(['message' => 'Typing status updated']);
+    }
+
+    /**
+     * Get messages for a specific room.
+     */
+    public function messages(Request $request, string $id)
+    {
+        $user = Auth::user();
+        
+        // Find the room
+        $room = Room::findOrFail($id);
+        
+        // Check if room is private and user is not a member
+        if ($room->is_private && !$room->members()->where('users.id', $user->id)->exists()) {
+            return response()->json(['message' => 'You do not have access to this room'], 403);
+        }
+        
+        // Get paginated messages
+        $messages = Message::with('user')
+            ->where('recipient_id', $id)
+            ->where('recipient_type', 'room')
+            ->latest()
+            ->paginate($request->input('limit', 20));
+        
+        return response()->json(['messages' => $messages]);
     }
 }
