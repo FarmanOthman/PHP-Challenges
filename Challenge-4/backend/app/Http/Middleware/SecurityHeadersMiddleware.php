@@ -20,6 +20,9 @@ class SecurityHeadersMiddleware
         // Add security headers
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         
+        // Add cache control header
+        $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        
         return $response;
     }
 }
