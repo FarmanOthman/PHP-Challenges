@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <h1>WebSocket Test</h1>
+    <div id="messages">
+        <p>Connecting to WebSocket server...</p>
+    </div>
+
+    <script src="https://js.pusher.com/7.0/pusher.min.js"></script>
+    <script>
+        // Enable Pusher logging
+        Pusher.logToConsole = true;
+
+        const pusher = new Pusher('app-key', {
+            wsHost: '127.0.0.1',
+            wsPort: 6001,
+            forceTLS: false,
+            disableStats: true,
+            enabledTransports: ['ws', 'wss'],
+            cluster: 'mt1'
+        });
+
+        const channel = pusher.subscribe('channel.general');
+        
+        channel.bind('new.message', function(data) {
+            const messagesDiv = document.getElementById('messages');
+            const messageP = document.createElement('p');
+            messageP.textContent = `${new Date().toLocaleTimeString()}: ${JSON.stringify(data)}`;
+            messagesDiv.appendChild(messageP);
+        });
+
+        // Listen to connection events
+        pusher.connection.bind('connected', () => {
+            const messagesDiv = document.getElementById('messages');
+            const messageP = document.createElement('p');
+            messageP.textContent = `${new Date().toLocaleTimeString()}: Connected to WebSocket server!`;
+            messageP.style.color = 'green';
+            messagesDiv.appendChild(messageP);
+        });
+
+        pusher.connection.bind('error', (err) => {
+            const messagesDiv = document.getElementById('messages');
+            const messageP = document.createElement('p');
+            messageP.textContent = `${new Date().toLocaleTimeString()}: Connection error - ${JSON.stringify(err)}`;
+            messageP.style.color = 'red';
+            messagesDiv.appendChild(messageP);
+        });
+    </script>
+</body>
+</html>
