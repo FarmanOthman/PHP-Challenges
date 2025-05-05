@@ -307,4 +307,36 @@ class RoomController extends Controller
         
         return response()->json(['messages' => $messages]);
     }
+
+    /**
+     * Leave the specified room.
+     */
+    public function leave(string $id)
+    {
+        $user = Auth::user();
+        
+        // Find the room
+        $room = Room::findOrFail($id);
+        
+        // Cannot leave if you're the creator
+        if ($room->created_by === $user->id) {
+            return response()->json(['message' => 'Room creator cannot leave the room'], 400);
+        }
+        
+        // Check if user is actually a member
+        if (!$user->isMemberOfRoom($room->id)) {
+            return response()->json(['message' => 'You are not a member of this room'], 404);
+        }
+        
+        // Remove the user from the room
+        $room->members()->detach($user->id);
+        
+        // Reload members
+        $room->load('members:id,name,email');
+        
+        return response()->json([
+            'room' => $room,
+            'message' => 'Successfully left the room'
+        ]);
+    }
 }
