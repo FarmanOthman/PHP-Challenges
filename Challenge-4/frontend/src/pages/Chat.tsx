@@ -1,12 +1,13 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../hooks/useAuth'; // Updated import path
 import { useChatStore } from '../store/chatStore';
 import socketService from '../services/socket';
 import ChatSidebar from '../components/chat/ChatSidebar';
 import MessageList from '../components/chat/MessageList';
 import MessageInput from '../components/chat/MessageInput';
 import OnlineUsers from '../components/chat/OnlineUsers';
+import { User } from '../types/chat'; // Import User type
 
 const Chat = () => {
   const { user, token, isAuthenticated, loading: authLoading } = useAuth();
@@ -89,12 +90,12 @@ const Chat = () => {
             <div className="bg-white p-4 border-b flex justify-between items-center">
               <h2 className="text-xl font-semibold">{activeRoom?.name || 'Chat'}</h2>
               
-              {/* Online status indicator - only for private chats */}
-              {activeRoom?.isPrivate && activeRoom.users.length === 2 && (
+              {/* Online status indicator - use is_private and members */}
+              {activeRoom?.is_private && activeRoom.members.length === 2 && (
                 <span className="flex items-center">
-                  {activeRoom.users
-                    .filter(u => u.id !== user?.id)
-                    .map(otherUser => (
+                  {activeRoom.members
+                    .filter((u: User) => u.id !== user?.id) // Add User type
+                    .map((otherUser: User) => ( // Add User type
                       <span key={otherUser.id} className="flex items-center">
                         <span className={`w-2 h-2 rounded-full mr-2 ${onlineUsers[otherUser.id] ? 'bg-green-500' : 'bg-gray-400'}`}></span>
                         {onlineUsers[otherUser.id] ? 'Online' : 'Offline'}

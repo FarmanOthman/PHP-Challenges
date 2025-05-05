@@ -1,5 +1,5 @@
-import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { Navigate, useLocation } from 'react-router-dom'; // Import useLocation, remove Outlet
+import { useAuth } from '../../hooks/useAuth'; // Updated import path
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -7,7 +7,7 @@ interface AuthGuardProps {
 
 const AuthGuard = ({ children }: AuthGuardProps) => {
   const { isAuthenticated, loading } = useAuth();
-  const location = useLocation();
+  const location = useLocation(); // Now correctly imported
 
   // If still loading auth state, show loading indicator
   if (loading) {
