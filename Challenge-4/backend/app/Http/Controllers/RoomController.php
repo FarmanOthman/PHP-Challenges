@@ -417,4 +417,63 @@ class RoomController extends Controller
             'message' => 'Member permissions updated successfully'
         ]);
     }
+
+    /**
+     * Invite users to a room.
+     */
+    public function invite(Request $request, string $id)
+    {
+        $user = Auth::user();
+        
+        // Find the room
+        $room = Room::findOrFail($id);
+        
+        // Check if user is authorized (admin or creator)
+        $isAdmin = $room->members()->where('users.id', $user->id)
+                       ->wherePivot('is_admin', true)
+                       ->exists();
+        
+        if (!$isAdmin && $room->created_by !== $user->id) {
+            return response()->json(['message' => 'You are not authorized to invite users to this room'], 403);
+        }
+        
+        // Validate request data
+        $validated = $request->validate([
+            'user_ids' => 'required|array',
+            'user_ids.*' => 'exists:users,id'
+        ]);
+        
+        // Filter out users who are already members
+        $existingMembers = $room->members()->whereIn('users.id', $validated['user_ids'])->pluck('users.id')->toArray();
+        $newUserIds = array_diff($validated['user_ids'], $existingMembers);
+        
+        if (empty($newUserIds)) {
+            return response()->json(['message' => 'All users are already members of this room'], 400);
+        }
+        
+        // Add the new members (non-admin by default)
+        $memberData = array_fill_keys($newUserIds, ['is_admin' => false]);
+        $room->members()->attach($memberData);
+        
+        // Send invitation notifications
+        $invitedUsers = User::whereIn('id', $newUserIds)->get();
+        foreach ($invitedUsers as $invitedUser) {
+            // Create a system message for the invitation
+            Message::create([
+                'user_id' => $user->id,
+                'recipient_id' => $invitedUser->id,
+                'recipient_type' => 'user',
+                'content' => "You have been invited to join the room: {$room->name}"
+            ]);
+        }
+        
+        // Reload members for response
+        $room->load('members:id,name,email');
+        
+        return response()->json([
+            'room' => $room,
+            'invited_users' => $invitedUsers,
+            'message' => 'Users invited successfully'
+        ]);
+    }
 }
