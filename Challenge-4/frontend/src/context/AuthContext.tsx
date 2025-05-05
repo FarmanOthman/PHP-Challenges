@@ -39,7 +39,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const isAuthenticated = !!user && !!token;
 
   useEffect(() => {
-    // On component mount, verify token and fetch user data if token exists
     const fetchUser = async () => {
       if (token) {
         try {
@@ -59,7 +58,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const login = async (email: string, password: string) => {
     try {
       const response = await api.post('/login', { email, password });
-      const { token: newToken, user: userData } = response.data;
+      const { access_token: newToken, user: userData } = response.data;
       
       localStorage.setItem('auth_token', newToken);
       setToken(newToken);
@@ -79,7 +78,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         password_confirmation: passwordConfirmation
       });
       
-      const { token: newToken, user: userData } = response.data;
+      const { access_token: newToken, user: userData } = response.data;
       
       localStorage.setItem('auth_token', newToken);
       setToken(newToken);
@@ -90,11 +89,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
   };
 
-  const logout = () => {
-    // Call logout endpoint if needed
-    localStorage.removeItem('auth_token');
-    setToken(null);
-    setUser(null);
+  const logout = async () => {
+    try {
+      await api.post('/logout'); 
+    } catch (error) {
+      console.error('Logout API call failed:', error);
+    } finally {
+      localStorage.removeItem('auth_token');
+      setToken(null);
+      setUser(null);
+    }
   };
 
   return (

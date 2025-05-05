@@ -31,7 +31,8 @@ api.interceptors.response.use(
     if (error.response && error.response.status === 401) {
       // Handle unauthorized error (e.g., redirect to login)
       localStorage.removeItem('auth_token');
-      // You could dispatch a logout action here if using Redux
+      // Redirect to login page
+      window.location.href = '/login'; 
     }
     return Promise.reject(error);
   }
