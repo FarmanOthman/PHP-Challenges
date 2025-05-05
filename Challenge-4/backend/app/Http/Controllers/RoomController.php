@@ -522,4 +522,65 @@ class RoomController extends Controller
             'count' => $count
         ]);
     }
+
+    /**
+     * Create a direct message room between two users.
+     */
+    public function createDirectMessage(Request $request)
+    {
+        $user = Auth::user();
+        
+        // Validate request data
+        $validated = $request->validate([
+            'user_id' => 'required|exists:users,id'
+        ]);
+        
+        // Don't allow creating DM with self
+        if ($validated['user_id'] == $user->id) {
+            return response()->json(['message' => 'Cannot create direct message room with yourself'], 400);
+        }
+        
+        // Check if a direct room already exists between these users
+        $existingRoom = Room::where('type', 'direct')
+            ->whereHas('members', function($q) use ($user) {
+                $q->where('users.id', $user->id);
+            })
+            ->whereHas('members', function($q) use ($validated) {
+                $q->where('users.id', $validated['user_id']);
+            })
+            ->first();
+            
+        if ($existingRoom) {
+            $existingRoom->load(['creator:id,name,email', 'members:id,name,email']);
+            return response()->json([
+                'room' => $existingRoom,
+                'message' => 'Direct message room already exists'
+            ]);
+        }
+        
+        // Get the other user
+        $otherUser = User::findOrFail($validated['user_id']);
+        
+        // Create the room
+        $room = Room::create([
+            'name' => "DM: {$user->name} & {$otherUser->name}",
+            'type' => 'direct',
+            'created_by' => $user->id,
+            'is_private' => true,
+        ]);
+        
+        // Add both users as members
+        $room->members()->attach([
+            $user->id => ['is_admin' => true],
+            $otherUser->id => ['is_admin' => true]
+        ]);
+        
+        // Load relationships
+        $room->load(['creator:id,name,email', 'members:id,name,email']);
+        
+        return response()->json([
+            'room' => $room,
+            'message' => 'Direct message room created successfully'
+        ], 201);
+    }
 }
