@@ -339,4 +339,34 @@ class RoomController extends Controller
             'message' => 'Successfully left the room'
         ]);
     }
+
+    /**
+     * Get the members of a room.
+     */
+    public function getMembers(string $id)
+    {
+        $user = Auth::user();
+        
+        // Find the room
+        $room = Room::findOrFail($id);
+        
+        // Check if room is private and user is not a member
+        if ($room->is_private && !$room->members()->where('users.id', $user->id)->exists()) {
+            return response()->json(['message' => 'You do not have access to this room'], 403);
+        }
+        
+        // Get members with their roles
+        $members = $room->members()
+            ->select('users.id', 'users.name', 'users.email', 'users.status', 'room_user.is_admin')
+            ->with(['unreadMessages' => function($query) use ($room) {
+                $query->where('recipient_type', 'room')
+                      ->where('recipient_id', $room->id);
+            }])
+            ->get();
+        
+        return response()->json([
+            'members' => $members,
+            'total' => $members->count()
+        ]);
+    }
 }
