@@ -476,4 +476,50 @@ class RoomController extends Controller
             'message' => 'Users invited successfully'
         ]);
     }
+
+    /**
+     * Mark room messages as read.
+     */
+    public function markAsRead(Request $request, string $id)
+    {
+        $user = Auth::user();
+        
+        // Find the room
+        $room = Room::findOrFail($id);
+        
+        // Check if user is a member of the room
+        if (!$user->isMemberOfRoom($room->id)) {
+            return response()->json(['message' => 'You are not a member of this room'], 403);
+        }
+        
+        // Get the query for messages to mark as read
+        $query = Message::where('recipient_id', $id)
+            ->where('recipient_type', 'room')
+            ->where('is_read', false)
+            ->where('user_id', '!=', $user->id); // Don't mark own messages
+            
+        // If specific message IDs are provided, only mark those as read
+        if ($request->has('message_ids')) {
+            $validated = $request->validate([
+                'message_ids' => 'array',
+                'message_ids.*' => 'exists:messages,id'
+            ]);
+            
+            $query->whereIn('id', $validated['message_ids']);
+        }
+        
+        // Mark messages as read
+        $messages = $query->get();
+        $count = 0;
+        
+        foreach ($messages as $message) {
+            $message->markAsRead();
+            $count++;
+        }
+        
+        return response()->json([
+            'message' => 'Messages marked as read',
+            'count' => $count
+        ]);
+    }
 }
