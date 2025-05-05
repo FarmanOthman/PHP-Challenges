@@ -256,4 +256,29 @@ class RoomController extends Controller
             'message' => 'Members removed successfully'
         ]);
     }
+
+    /**
+     * Update typing status for a room
+     */
+    public function updateTypingStatus(Request $request, string $id)
+    {
+        $validated = $request->validate([
+            'is_typing' => 'required|boolean'
+        ]);
+
+        $user = $request->user();
+        $room = Room::findOrFail($id);
+
+        if (!$user->isMemberOfRoom($room->id)) {
+            return response()->json(['message' => 'You are not a member of this room'], 403);
+        }
+
+        broadcast(new UserTyping(
+            $room->id,
+            ['id' => $user->id, 'name' => $user->name],
+            $validated['is_typing']
+        ))->toOthers();
+
+        return response()->json(['message' => 'Typing status updated']);
+    }
 }
