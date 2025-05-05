@@ -3,6 +3,7 @@
 use App\Events\MessageSent;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\RoomController;
+use App\Http\Controllers\UserController;
 use App\Models\Message;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -45,6 +46,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
+    
+    Route::get('/users', [UserController::class, 'index']);
     
     Route::post('/logout', [\App\Http\Controllers\Auth\AuthController::class, 'logout']);
     
