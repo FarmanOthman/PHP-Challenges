@@ -107,6 +107,33 @@ class MessageController extends Controller
     }
 
     /**
+     * Update the specified message.
+     */
+    public function update(Request $request, string $id)
+    {
+        $message = Message::findOrFail($id);
+        
+        // Check if user has permission to update this message
+        $this->authorize('update', $message);
+        
+        $validated = $request->validate([
+            'content' => 'required|string'
+        ]);
+        
+        $message->update([
+            'content' => $validated['content']
+        ]);
+        
+        // Load the user relationship for complete message data
+        $message->load('user');
+        
+        return response()->json([
+            'message' => $message,
+            'status' => 'Message updated successfully'
+        ]);
+    }
+
+    /**
      * Mark message as read.
      */
     public function markAsRead(string $id)
