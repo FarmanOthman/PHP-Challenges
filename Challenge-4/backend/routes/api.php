@@ -48,11 +48,16 @@ Route::middleware('auth:sanctum')->group(function () {
     });
     
     Route::get('/users', [UserController::class, 'index']);
+    Route::get('/users/search', [UserController::class, 'search']);
+    Route::get('/users/online', [UserController::class, 'online']);
+    Route::post('/users/status', [UserController::class, 'updateStatus']);
     
     Route::post('/logout', [\App\Http\Controllers\Auth\AuthController::class, 'logout']);
     
     // Message routes
     Route::apiResource('messages', MessageController::class);
+    Route::get('/invitations', [MessageController::class, 'getInvitations']);
+    Route::post('/invitations/{id}/respond', [MessageController::class, 'respondToInvitation']);
     
     // Additional message routes
     Route::post('/messages/{id}/read', [MessageController::class, 'markAsRead']);
@@ -60,6 +65,14 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Room routes
     Route::apiResource('rooms', RoomController::class);
+    Route::get('/rooms/{id}/members', [RoomController::class, 'getMembers']);
+    Route::put('/rooms/{id}/members/{userId}', [RoomController::class, 'updateMemberPermissions']);
+    Route::post('/rooms/{id}/invite', [RoomController::class, 'invite']);
+    Route::post('/rooms/{id}/leave', [RoomController::class, 'leave']);
+    Route::post('/rooms/{id}/read', [RoomController::class, 'markAsRead']);
+    Route::get('/rooms/{id}/messages', [RoomController::class, 'messages']);
+    Route::post('/rooms/{id}/typing', [RoomController::class, 'updateTypingStatus']);
+    Route::post('/direct-messages', [RoomController::class, 'createDirectMessage']);
     
     // Additional room management routes
     Route::post('/rooms/{id}/members', [RoomController::class, 'addMembers']);
