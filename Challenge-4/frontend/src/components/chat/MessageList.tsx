@@ -1,6 +1,7 @@
-import { useRef, useEffect } from 'react';
-import { Message } from '../../types/chat';
-import { format } from 'date-fns';
+import { VStack, Box, Text, Avatar, Flex, useColorModeValue } from '@chakra-ui/react';
+import type { Message } from '../../types/chat';
+import { useChatStore } from '../../store/chatStore';
+import TypingIndicator from './TypingIndicator';
 
 interface MessageListProps {
   messages: Message[];
@@ -8,75 +9,94 @@ interface MessageListProps {
 }
 
 const MessageList = ({ messages, currentUserId }: MessageListProps) => {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { typingUsers, activeRoomId } = useChatStore();
+  const bubbleBg = useColorModeValue('gray.100', 'gray.700');
+  const myBubbleBg = useColorModeValue('blue.500', 'blue.400');
+  const myTextColor = 'white';
 
-  // Auto-scroll to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  const formatTime = (timestamp: string) => {
+    return new Date(timestamp).toLocaleTimeString([], { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  };
 
-  // Group messages by date
-  const groupedMessages = messages.reduce<{ [date: string]: Message[] }>((groups, message) => {
-    const date = new Date(message.createdAt).toDateString();
-    if (!groups[date]) {
-      groups[date] = [];
-    }
-    groups[date].push(message);
-    return groups;
-  }, {});
+  // Get current typing users for this room
+  const currentTypingUsers = activeRoomId ? typingUsers[activeRoomId] || [] : [];
 
   return (
-    <div className="space-y-6">
-      {Object.entries(groupedMessages).map(([date, dateMessages]) => (
-        <div key={date}>
-          <div className="flex justify-center my-4">
-            <div className="bg-gray-200 rounded-full px-3 py-1 text-sm text-gray-600">
-              {date === new Date().toDateString() ? 'Today' : date}
-            </div>
-          </div>
+    <VStack spacing={4} align="stretch">
+      {messages.map((message, index) => {
+        const isMyMessage = message.userId === currentUserId;
+        const showAvatar = index === 0 || messages[index - 1]?.userId !== message.userId;
 
-          <div className="space-y-3">
-            {dateMessages.map((message) => {
-              const isMine = message.userId === currentUserId;
-              return (
-                <div 
-                  key={message.id} 
-                  className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}
+        return (
+          <Flex
+            key={message.id}
+            justify={isMyMessage ? 'flex-end' : 'flex-start'}
+            align="flex-end"
+            gap={2}
+          >
+            {!isMyMessage && showAvatar && (
+              <Avatar 
+                size="sm" 
+                name={message.user?.name || 'User'} 
+                src={message.user?.avatar} 
+              />
+            )}
+            {!isMyMessage && !showAvatar && <Box w="32px" />}
+            <Box maxW="70%">
+              {showAvatar && (
+                <Flex 
+                  gap={2} 
+                  align="center" 
+                  mb={1}
+                  justify={isMyMessage ? 'flex-end' : 'flex-start'}
                 >
-                  <div 
-                    className={`max-w-xs md:max-w-md lg:max-w-lg rounded-lg px-4 py-2 ${
-                      isMine 
-                      ? 'bg-indigo-600 text-white rounded-br-none' 
-                      : 'bg-white text-gray-800 rounded-bl-none shadow'
-                    }`}
-                  >
-                    {!isMine && (
-                      <p className="text-xs font-medium text-gray-500 mb-1">
-                        {message.user.name}
-                      </p>
-                    )}
-                    <p>{message.content}</p>
-                    <p className={`text-xs mt-1 text-right ${isMine ? 'text-indigo-100' : 'text-gray-500'}`}>
-                      {format(new Date(message.createdAt), 'h:mm a')}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-
-      {/* Empty state */}
-      {messages.length === 0 && (
-        <div className="flex justify-center items-center h-40">
-          <p className="text-gray-500">No messages yet</p>
-        </div>
+                  <Text fontSize="sm" fontWeight="bold">
+                    {message.user?.name || 'User'}
+                  </Text>
+                  <Text fontSize="xs" color="gray.500">
+                    {formatTime(message.createdAt)}
+                  </Text>
+                </Flex>
+              )}
+              <Box
+                bg={isMyMessage ? myBubbleBg : bubbleBg}
+                color={isMyMessage ? myTextColor : 'inherit'}
+                px={4}
+                py={2}
+                borderRadius="lg"
+                borderTopLeftRadius={!isMyMessage && !showAvatar ? 'md' : 'lg'}
+                borderTopRightRadius={isMyMessage && !showAvatar ? 'md' : 'lg'}
+              >
+                <Text>{message.content}</Text>
+              </Box>
+            </Box>
+            {isMyMessage && showAvatar && (
+              <Avatar 
+                size="sm" 
+                name={message.user?.name || 'User'} 
+                src={message.user?.avatar} 
+              />
+            )}
+            {isMyMessage && !showAvatar && <Box w="32px" />}
+          </Flex>
+        );
+      })}
+      
+      {/* Show typing indicators */}
+      {currentTypingUsers.length > 0 && (
+        <Box pl={4}>
+          {currentTypingUsers.map(userId => (
+            <TypingIndicator 
+              key={userId} 
+              username={messages.find(m => m.userId.toString() === userId)?.user?.name || 'User'} 
+            />
+          ))}
+        </Box>
       )}
-
-      {/* Auto-scroll anchor */}
-      <div ref={messagesEndRef} />
-    </div>
+    </VStack>
   );
 };
 
