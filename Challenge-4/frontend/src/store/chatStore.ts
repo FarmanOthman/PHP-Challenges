@@ -1,14 +1,16 @@
 import { create } from 'zustand';
-import { Message, Room, OnlineStatus } from '../types/chat';
+import type { Message, Room, OnlineStatus, User } from '../types/chat';
 import api from '../services/api';
 import socketService from '../services/socket';
 import axios from 'axios'; // Import axios to check for AxiosError
 
 interface ChatState {
   rooms: Room[];
+  availableUsers: User[];  // Add this line
   activeRoomId: string | null;
   messages: { [roomId: string]: Message[] };
   onlineUsers: OnlineStatus;
+  typingUsers: { [roomId: string]: string[] };
   loading: boolean;
   error: string | null;
   
@@ -19,6 +21,7 @@ interface ChatState {
   sendMessage: (content: string) => Promise<void>;
   addMessage: (message: Message) => void;
   updateOnlineStatus: (userId: number, isOnline: boolean) => void;
+  setTypingStatus: (roomId: string, userId: string, isTyping: boolean) => void;
   
   // Room management
   createRoom: (roomData: {
@@ -56,9 +59,11 @@ const getErrorMessage = (error: unknown, defaultMessage: string): string => {
 
 export const useChatStore = create<ChatState>((set, get) => ({
   rooms: [],
+  availableUsers: [], // Add the missing property
   activeRoomId: null,
   messages: {},
   onlineUsers: {},
+  typingUsers: {},
   loading: false,
   error: null,
   
@@ -111,7 +116,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
       socketService.leaveRoom(currentRoomId);
     }
     
-    set({ activeRoomId: roomId, error: null });
+    set(state => ({
+      activeRoomId: roomId,
+      error: null,
+      typingUsers: {
+        ...state.typingUsers,
+        // Fix the type issue with a type guard
+        ...(currentRoomId ? { [currentRoomId as string]: [] } : {})
+      }
+    }));
+    
     socketService.joinRoom(roomId);
     fetchMessages(roomId);
   },
@@ -157,6 +171,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
         [userId]: isOnline
       }
     }));
+  },
+
+  setTypingStatus: (roomId: string, userId: string, isTyping: boolean) => {
+    set(state => {
+      const roomTypingUsers = state.typingUsers[roomId] || [];
+      const updatedTypingUsers = isTyping
+        ? [...new Set([...roomTypingUsers, userId])]
+        : roomTypingUsers.filter(id => id !== userId);
+
+      return {
+        typingUsers: {
+          ...state.typingUsers,
+          [roomId]: updatedTypingUsers
+        }
+      };
+    });
   },
 
   createRoom: async (roomData) => {
