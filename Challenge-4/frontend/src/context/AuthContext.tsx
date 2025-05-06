@@ -1,6 +1,7 @@
-import { useState, useEffect, ReactNode } from 'react';
+import { useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import api from '../services/api';
-import { AuthContext } from './AuthContextDefinition'; // Import from new definition file
+import { AuthContext } from './AuthContextDefinition'; 
 
 // Define User interface locally if not imported
 interface User {
