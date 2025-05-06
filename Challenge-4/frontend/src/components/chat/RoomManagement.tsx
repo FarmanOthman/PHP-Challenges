@@ -1,6 +1,41 @@
-import { useState, useEffect } from 'react';
-import { useChatStore } from '../../store/chatStore';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import {
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalCloseButton,
+  ModalBody,
+  ModalFooter,
+  Button,
+  VStack,
+  FormControl,
+  FormLabel,
+  Input,
+  Textarea,
+  Switch,
+  Text,
+  useToast,
+  Divider,
+  Box,
+  Checkbox,
+  Stack,
+  AlertDialog,
+  AlertDialogBody,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogContent,
+  AlertDialogOverlay,
+  Flex,
+  Badge,
+  InputGroup,
+  InputRightElement,
+  useColorModeValue,
+  Spinner
+} from '@chakra-ui/react';
+import { SearchIcon, DeleteIcon, CopyIcon } from '@chakra-ui/icons';
 import { Room, User } from '../../types/chat';
+import { useChatStore } from '../../store/chatStore';
 import api from '../../services/api';
 
 interface RoomManagementProps {
@@ -8,353 +43,457 @@ interface RoomManagementProps {
   onClose: () => void;
 }
 
+interface FormData {
+  name: string;
+  description: string;
+  isPrivate: boolean;
+  members: User[];
+}
+
 const RoomManagement = ({ room, onClose }: RoomManagementProps) => {
-  const { updateRoom, deleteRoom, addMembers, removeMembers } = useChatStore();
-  
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [availableUsers, setAvailableUsers] = useState<User[]>([]);
-  const [selectedTab, setSelectedTab] = useState<'details' | 'members'>('details');
-  const [selectedUsers, setSelectedUsers] = useState<number[]>([]);
-  
-  const [formData, setFormData] = useState({
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isValidForm, setIsValidForm] = useState(true);
+  const [formData, setFormData] = useState<FormData>({
     name: room.name,
-    description: room.description,
-    type: room.type,
-    is_private: room.is_private
+    description: room.description || '',
+    isPrivate: room.type === 'private',
+    members: room.members || []
   });
-  
-  // Fetch users that can be added to the room
+  const [showInviteCode, setShowInviteCode] = useState(false);
+  const [inviteLink, setInviteLink] = useState('');
+
+  const { fetchRooms, deleteRoom } = useChatStore();
+  const toast = useToast();
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const borderColor = useColorModeValue('gray.200', 'gray.600');
+  const highlightColor = useColorModeValue('blue.50', 'blue.900');
+
+  // Get all available users
+  const availableUsers = useMemo(() => {
+    const existingMemberIds = new Set(room.members.map(m => m.id));
+    return room.type !== 'direct' 
+      ? room.members.concat(
+          // Add other available users that aren't already members
+          room.availableUsers?.filter((u: User) => !existingMemberIds.has(u.id)) || []
+        )
+      : room.members;
+  }, [room.members, room.availableUsers, room.type]);
+
+  // Current user ID
+  const currentUserId = parseInt(localStorage.getItem('user_id') || '0');
+  const isCurrentUserOwner = room.owner_id === currentUserId;
+
+  // Validate form when name changes
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const response = await api.get('/users');
-        // Filter out users that are already members
-        const memberIds = room.members.map(member => member.id);
-        const filteredUsers = response.data.filter((user: User) => !memberIds.includes(user.id));
-        setAvailableUsers(filteredUsers);
-      } catch (error) {
-        console.error('Failed to fetch users:', error);
-        setError('Failed to fetch users');
-      }
-    };
-    
-    fetchUsers();
-  }, [room.members]);
-  
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    setIsValidForm(formData.name.trim().length > 0);
+  }, [formData.name]);
+
+  // Generate invite link when showing
+  useEffect(() => {
+    if (showInviteCode) {
+      const baseUrl = window.location.origin;
+      setInviteLink(`${baseUrl}/join/${room.id}`);
+    }
+  }, [showInviteCode, room.id]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
-  
-  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, checked } = e.target;
-    setFormData(prev => ({ ...prev, [name]: checked }));
-  };
-  
-  const handleSaveRoom = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      await updateRoom(room.id, formData);
-      onClose();
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error 
-        ? error.message 
-        : 'Failed to update room';
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  const handleDeleteRoom = async () => {
-    if (!window.confirm('Are you sure you want to delete this room?')) {
+
+  const handleMemberToggle = (toggleUser: User) => {
+    // Prevent removing yourself from members
+    if (toggleUser.id === currentUserId && formData.members.some(member => member.id === currentUserId)) {
+      toast({
+        title: "Cannot remove yourself",
+        description: "You cannot remove yourself from the room. Use 'Leave Room' instead.",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
       return;
     }
-    
-    setLoading(true);
-    setError(null);
-    
+
+    setFormData(prev => ({
+      ...prev,
+      members: prev.members.some(member => member.id === toggleUser.id)
+        ? prev.members.filter(member => member.id !== toggleUser.id)
+        : [...prev.members, toggleUser]
+    }));
+  };
+
+  const handleSubmit = async () => {
+    if (!isValidForm) {
+      toast({
+        title: "Invalid form",
+        description: "Room name cannot be empty.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await api.put(`/rooms/${room.id}`, {
+        name: formData.name,
+        description: formData.description,
+        type: formData.isPrivate ? 'private' : 'public',
+        members: formData.members
+      });
+
+      await fetchRooms();
+      toast({
+        title: 'Room updated successfully',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+      onClose();
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred while updating the room.';
+      toast({
+        title: 'Error updating room',
+        description: errorMessage,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLeaveRoom = async () => {
+    setIsLeaving(true);
+    try {
+      await api.post(`/rooms/${room.id}/leave`);
+      await fetchRooms();
+      toast({
+        title: 'Left room successfully',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+      onClose();
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred while leaving the room.';
+      toast({
+        title: 'Error leaving room',
+        description: errorMessage,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsLeaving(false);
+      setShowLeaveConfirm(false);
+    }
+  };
+
+  const handleDeleteRoom = async () => {
+    setIsDeleting(true);
     try {
       await deleteRoom(room.id);
+      toast({
+        title: 'Room deleted successfully',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
       onClose();
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error 
-        ? error.message 
-        : 'Failed to delete room';
-      setError(errorMessage);
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred while deleting the room.';
+      toast({
+        title: 'Error deleting room',
+        description: errorMessage,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
     } finally {
-      setLoading(false);
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
-  
-  const handleUserSelection = (userId: number) => {
-    setSelectedUsers(prev => {
-      const isSelected = prev.includes(userId);
-      return isSelected
-        ? prev.filter(id => id !== userId)
-        : [...prev, userId];
-    });
-  };
-  
-  const handleAddMembers = async () => {
-    if (selectedUsers.length === 0) {
-      return;
-    }
-    
-    setLoading(true);
-    setError(null);
-    
+
+  const copyInviteLink = async () => {
     try {
-      await addMembers(room.id, selectedUsers);
-      setSelectedUsers([]);
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error 
-        ? error.message 
-        : 'Failed to add members';
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
+      await navigator.clipboard.writeText(inviteLink);
+      toast({
+        title: 'Invite link copied',
+        status: 'success',
+        duration: 2000,
+        isClosable: true,
+      });
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      console.error('Failed to copy invite link:', errorMessage);
+      toast({
+        title: 'Failed to copy invite link',
+        status: 'error',
+        duration: 2000,
+        isClosable: true,
+      });
     }
   };
-  
-  const handleRemoveMember = async (userId: number) => {
-    if (!window.confirm('Are you sure you want to remove this member?')) {
-      return;
-    }
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      await removeMembers(room.id, [userId]);
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error 
-        ? error.message 
-        : 'Failed to remove member';
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // Check if current user is room creator or admin
-  const isCreator = room.creator?.id === parseInt(localStorage.getItem('user_id') || '0');
-  const isAdmin = room.members.some(
-    member => 
-      member.id === parseInt(localStorage.getItem('user_id') || '0') && 
-      member.pivot?.is_admin
-  );
-  
-  // Only creator or admins can edit room details
-  const canEditRoom = isCreator || isAdmin;
-  
+
+  const filteredUsers = searchQuery.trim()
+    ? availableUsers.filter(user => 
+        user.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : availableUsers;
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg w-full max-w-lg">
-        {/* Header */}
-        <div className="flex justify-between items-center px-6 py-4 border-b">
-          <h2 className="text-2xl font-bold">Room Settings</h2>
-          <button 
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
-            aria-label="Close"
-          >
-            &times;
-          </button>
-        </div>
-        
-        {/* Tabs */}
-        <div className="flex border-b">
-          <button
-            className={`px-6 py-3 ${selectedTab === 'details' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-600'}`}
-            onClick={() => setSelectedTab('details')}
-            aria-label="Show room details"
-          >
-            Room Details
-          </button>
-          <button
-            className={`px-6 py-3 ${selectedTab === 'members' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-600'}`}
-            onClick={() => setSelectedTab('members')}
-            aria-label="Show members"
-          >
-            Members
-          </button>
-        </div>
-        
-        {/* Error message */}
-        {error && (
-          <div className="m-6 p-3 bg-red-100 text-red-700 rounded-md">
-            {error}
-          </div>
-        )}
-        
-        {/* Content */}
-        <div className="p-6">
-          {selectedTab === 'details' && (
-            <div>
-              <div className="mb-4">
-                <label className="block text-gray-700 mb-2" htmlFor="edit-room-name">Room Name</label>
-                <input
-                  id="edit-room-name"
-                  type="text"
+    <>
+      <Modal isOpen={true} onClose={onClose} size="lg">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>
+            <Flex align="center" gap={2}>
+              Room Settings
+              <Badge colorScheme={room.type === 'public' ? 'green' : room.type === 'direct' ? 'blue' : 'purple'}>
+                {room.type}
+              </Badge>
+            </Flex>
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack spacing={4} align="stretch">
+              <FormControl isRequired>
+                <FormLabel>Room Name</FormLabel>
+                <Input
                   name="name"
                   value={formData.name}
                   onChange={handleInputChange}
-                  disabled={!canEditRoom}
-                  className={`w-full px-3 py-2 border rounded-md ${!canEditRoom ? 'bg-gray-100' : ''}`}
-                  placeholder="Room name"
+                  isInvalid={formData.name.trim().length === 0}
                 />
-              </div>
-              
-              <div className="mb-4">
-                <label className="block text-gray-700 mb-2" htmlFor="edit-room-description">Description</label>
-                <textarea
-                  id="edit-room-description"
+              </FormControl>
+
+              <FormControl>
+                <FormLabel>Description</FormLabel>
+                <Textarea
                   name="description"
                   value={formData.description}
                   onChange={handleInputChange}
-                  disabled={!canEditRoom}
-                  className={`w-full px-3 py-2 border rounded-md ${!canEditRoom ? 'bg-gray-100' : ''}`}
-                  rows={3}
-                  placeholder="Room description"
+                  placeholder="Add a room description..."
+                  resize="vertical"
                 />
-              </div>
-              
-              <div className="mb-4">
-                <label className="block text-gray-700 mb-2" htmlFor="edit-room-type">Room Type</label>
-                <select
-                  id="edit-room-type"
-                  name="type"
-                  value={formData.type}
-                  onChange={handleInputChange}
-                  disabled={!canEditRoom}
-                  className={`w-full px-3 py-2 border rounded-md ${!canEditRoom ? 'bg-gray-100' : ''}`}
-                  aria-label="Room type"
-                >
-                  <option value="public">Public</option>
-                  <option value="private">Private</option>
-                  <option value="direct">Direct Message</option>
-                </select>
-              </div>
-              
-              <div className="mb-6">
-                <label className="flex items-center" htmlFor="edit-room-is-private">
-                  <input
-                    id="edit-room-is-private"
-                    type="checkbox"
-                    name="is_private"
-                    checked={formData.is_private}
-                    onChange={handleCheckboxChange}
-                    disabled={!canEditRoom}
-                    className="mr-2"
-                  />
-                  <span>Make room private (only visible to members)</span>
-                </label>
-              </div>
-              
-              <div className="flex justify-between">
-                {isCreator && (
-                  <button
-                    onClick={handleDeleteRoom}
-                    disabled={loading}
-                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
-                    aria-label="Delete room"
+              </FormControl>
+
+              <FormControl display="flex" alignItems="center">
+                <FormLabel mb="0">Private Room</FormLabel>
+                <Switch
+                  isChecked={formData.isPrivate}
+                  onChange={(e) => setFormData(prev => ({ 
+                    ...prev, 
+                    isPrivate: e.target.checked 
+                  }))}
+                  isDisabled={!isCurrentUserOwner || room.type === 'direct'}
+                />
+              </FormControl>
+
+              <Divider />
+
+              {/* Invite Link Section */}
+              <Box>
+                <Flex justify="space-between" align="center" mb={2}>
+                  <Text fontWeight="medium">Invitation</Text>
+                  <Button
+                    size="sm"
+                    leftIcon={<CopyIcon />}
+                    onClick={() => setShowInviteCode(!showInviteCode)}
                   >
-                    Delete Room
-                  </button>
+                    {showInviteCode ? 'Hide' : 'Show'} Invite Link
+                  </Button>
+                </Flex>
+                {showInviteCode && (
+                  <Flex gap={2} mt={2}>
+                    <Input value={inviteLink} isReadOnly />
+                    <Button onClick={copyInviteLink}>Copy</Button>
+                  </Flex>
                 )}
+              </Box>
+
+              <Divider />
+
+              <Box w="100%">
+                <Flex justify="space-between" align="center" mb={2}>
+                  <Text fontWeight="medium">Room Members ({formData.members.length})</Text>
+                  <Badge>{isCurrentUserOwner ? 'Admin' : 'Member'}</Badge>
+                </Flex>
                 
-                {canEditRoom && (
-                  <button
-                    onClick={handleSaveRoom}
-                    disabled={loading}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
-                    aria-label="Save room changes"
-                  >
-                    {loading ? 'Saving...' : 'Save Changes'}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-          
-          {selectedTab === 'members' && (
-            <div>
-              <h3 className="text-lg font-semibold mb-3">Current Members</h3>
-              <div className="mb-6 max-h-48 overflow-y-auto border rounded-md">
-                {room.members.length === 0 ? (
-                  <p className="p-3 text-gray-500">No members in this room</p>
-                ) : (
-                  <ul className="divide-y" role="list" aria-label="Room members">
-                    {room.members.map(member => (
-                      <li key={member.id} className="flex justify-between items-center p-3">
-                        <div>
-                          <span>{member.name}</span>
-                          {member.id === room.created_by && (
-                            <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Creator</span>
-                          )}
-                          {member.pivot?.is_admin && member.id !== room.created_by && (
-                            <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Admin</span>
-                          )}
-                        </div>
-                        
-                        {canEditRoom && member.id !== room.created_by && member.id !== parseInt(localStorage.getItem('user_id') || '0') && (
-                          <button
-                            onClick={() => handleRemoveMember(member.id)}
-                            className="text-red-600 hover:text-red-800"
-                            aria-label={`Remove ${member.name} from room`}
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              
-              {canEditRoom && (
-                <>
-                  <h3 className="text-lg font-semibold mb-3">Add New Members</h3>
-                  {availableUsers.length > 0 ? (
-                    <>
-                      <div className="mb-4 max-h-48 overflow-y-auto border rounded-md p-2">
-                        {availableUsers.map(user => (
-                          <label key={user.id} className="flex items-center py-2 px-3 hover:bg-gray-50">
-                            <input
-                              type="checkbox"
-                              checked={selectedUsers.includes(user.id)}
-                              onChange={() => handleUserSelection(user.id)}
-                              className="mr-2"
-                              aria-label={`Select ${user.name} to add to room`}
-                            />
-                            <span>{user.name}</span>
-                          </label>
-                        ))}
-                      </div>
-                      
-                      <button
-                        onClick={handleAddMembers}
-                        disabled={selectedUsers.length === 0 || loading}
-                        className="w-full py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
-                        aria-label="Add selected members to room"
-                      >
-                        {loading ? 'Adding...' : `Add Selected Members (${selectedUsers.length})`}
-                      </button>
-                    </>
+                <InputGroup size="md" mb={3}>
+                  <Input
+                    placeholder="Search members..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  <InputRightElement>
+                    <SearchIcon color="gray.400" />
+                  </InputRightElement>
+                </InputGroup>
+                
+                <Box 
+                  maxH="200px" 
+                  overflowY="auto" 
+                  borderWidth="1px" 
+                  borderRadius="md" 
+                  borderColor={borderColor}
+                  p={2}
+                >
+                  {isLoading ? (
+                    <Flex justify="center" align="center" h="100px">
+                      <Spinner />
+                    </Flex>
+                  ) : filteredUsers.length > 0 ? (
+                    <Stack spacing={2}>
+                      {filteredUsers.map((user: User) => (
+                        <Checkbox
+                          key={user.id}
+                          isChecked={formData.members.some(member => member.id === user.id)}
+                          onChange={() => handleMemberToggle(user)}
+                          isDisabled={!isCurrentUserOwner || user.id === currentUserId}
+                          bg={user.id === currentUserId ? highlightColor : undefined}
+                          p={1}
+                          borderRadius="md"
+                        >
+                          <Flex align="center" justify="space-between" width="100%">
+                            <Text>{user.name}</Text>
+                            {user.id === room.owner_id && (
+                              <Badge colorScheme="purple" ml={2}>Owner</Badge>
+                            )}
+                            {user.id === currentUserId && (
+                              <Badge colorScheme="blue" ml={2}>You</Badge>
+                            )}
+                          </Flex>
+                        </Checkbox>
+                      ))}
+                    </Stack>
                   ) : (
-                    <p className="text-gray-500">No users available to add</p>
+                    <Text color="gray.500" textAlign="center" py={4}>
+                      {searchQuery ? "No members found" : "No users available"}
+                    </Text>
                   )}
+                </Box>
+              </Box>
+
+              {/* Danger Zone */}
+              {isCurrentUserOwner && (
+                <>
+                  <Divider />
+                  <Box p={4} bg="red.50" borderRadius="md" borderWidth="1px" borderColor="red.200">
+                    <Text fontWeight="bold" color="red.600" mb={2}>
+                      Danger Zone
+                    </Text>
+                    <Button
+                      leftIcon={<DeleteIcon />}
+                      colorScheme="red"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowDeleteConfirm(true)}
+                      isLoading={isDeleting}
+                      loadingText="Deleting..."
+                      w="full"
+                    >
+                      Delete Room
+                    </Button>
+                  </Box>
                 </>
               )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+            </VStack>
+          </ModalBody>
+
+          <ModalFooter>
+            <Button
+              colorScheme="red"
+              variant="ghost"
+              mr="auto"
+              onClick={() => setShowLeaveConfirm(true)}
+              isLoading={isLeaving}
+              loadingText="Leaving..."
+              isDisabled={isLoading || isDeleting}
+            >
+              Leave Room
+            </Button>
+            <Button variant="ghost" mr={3} onClick={onClose} isDisabled={isLoading || isLeaving || isDeleting}>
+              Cancel
+            </Button>
+            <Button
+              colorScheme="blue"
+              onClick={handleSubmit}
+              isLoading={isLoading}
+              loadingText="Saving..."
+              isDisabled={!isValidForm || isLeaving || isDeleting}
+            >
+              Save Changes
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Leave Room Confirmation */}
+      <AlertDialog
+        isOpen={showLeaveConfirm}
+        leastDestructiveRef={cancelRef as React.RefObject<HTMLButtonElement>}
+        onClose={() => setShowLeaveConfirm(false)}
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              Leave Room
+            </AlertDialogHeader>
+
+            <AlertDialogBody>
+              Are you sure you want to leave "{room.name}"? You will need to be invited back to rejoin.
+            </AlertDialogBody>
+
+            <AlertDialogFooter>
+              <Button ref={cancelRef} onClick={() => setShowLeaveConfirm(false)}>
+                Cancel
+              </Button>
+              <Button colorScheme="red" onClick={handleLeaveRoom} ml={3} isLoading={isLeaving}>
+                Leave Room
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
+
+      {/* Delete Room Confirmation */}
+      <AlertDialog
+        isOpen={showDeleteConfirm}
+        leastDestructiveRef={cancelRef as React.RefObject<HTMLButtonElement>}
+        onClose={() => setShowDeleteConfirm(false)}
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              Delete Room
+            </AlertDialogHeader>
+
+            <AlertDialogBody>
+              Are you sure you want to delete "{room.name}"? This action cannot be undone.
+              All messages and data will be permanently deleted.
+            </AlertDialogBody>
+
+            <AlertDialogFooter>
+              <Button ref={cancelRef} onClick={() => setShowDeleteConfirm(false)}>
+                Cancel
+              </Button>
+              <Button colorScheme="red" onClick={handleDeleteRoom} ml={3} isLoading={isDeleting}>
+                Delete Room
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
+    </>
   );
 };
 
