@@ -1,4 +1,6 @@
-import { Room } from '../../types/chat';
+import { Box, VStack, Text, Flex, Icon, Badge } from '@chakra-ui/react';
+import { FaHashtag, FaLock, FaUserFriends } from 'react-icons/fa';
+import type { Room } from '../../types/chat';
 
 interface ChatSidebarProps {
   rooms: Room[];
@@ -7,49 +9,54 @@ interface ChatSidebarProps {
 }
 
 const ChatSidebar = ({ rooms, activeRoomId, onRoomSelect }: ChatSidebarProps) => {
+  const hoverBg = "gray.100";
+  const activeBg = "blue.50";
+  const activeColor = "blue.600";
+
+  const getRoomIcon = (type: string) => {
+    switch (type) {
+      case 'private':
+        return FaLock;
+      case 'direct':
+        return FaUserFriends;
+      default:
+        return FaHashtag;
+    }
+  };
+
   return (
-    <div className="h-full flex flex-col">
-      <div className="p-4 border-b">
-        <h2 className="text-lg font-bold">Chats</h2>
-      </div>
-      
-      <div className="overflow-y-auto flex-1">
-        {rooms.length === 0 ? (
-          <div className="p-4 text-center text-gray-500">
-            No chats available
-          </div>
-        ) : (
-          <ul>
-            {rooms.map((room) => (
-              <li 
-                key={room.id}
-                onClick={() => onRoomSelect(room.id)}
-                className={`p-4 border-b cursor-pointer hover:bg-gray-100 ${
-                  activeRoomId === room.id ? 'bg-indigo-50' : ''
-                }`}
-              >
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="font-medium">{room.name}</h3>
-                    {room.lastMessage && (
-                      <p className="text-sm text-gray-500 truncate">
-                        {room.lastMessage.content}
-                      </p>
-                    )}
-                  </div>
-                  
-                  {room.unreadCount && room.unreadCount > 0 && (
-                    <span className="bg-indigo-600 text-white text-xs rounded-full px-2 py-1">
-                      {room.unreadCount}
-                    </span>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
+    <VStack spacing={0} align="stretch" h="calc(100vh - 72px)" overflowY="auto">
+      {rooms.map((room) => (
+        <Box
+          key={room.id}
+          px={4}
+          py={3}
+          cursor="pointer"
+          bg={activeRoomId === room.id ? activeBg : 'transparent'}
+          color={activeRoomId === room.id ? activeColor : 'inherit'}
+          _hover={{ bg: activeRoomId === room.id ? activeBg : hoverBg }}
+          onClick={() => onRoomSelect(room.id)}
+          transition="all 0.2s"
+        >
+          <Flex align="center" gap={2}>
+            <Icon as={getRoomIcon(room.type)} />
+            <Text fontWeight={activeRoomId === room.id ? 'semibold' : 'normal'} noOfLines={1}>
+              {room.name}
+            </Text>
+            {room.unreadCount && room.unreadCount > 0 && (
+              <Badge colorScheme="red" rounded="full" ml="auto">
+                {room.unreadCount}
+              </Badge>
+            )}
+          </Flex>
+          {room.description && (
+            <Text fontSize="xs" color="gray.500" ml={6} noOfLines={1}>
+              {room.description}
+            </Text>
+          )}
+        </Box>
+      ))}
+    </VStack>
   );
 };
 
