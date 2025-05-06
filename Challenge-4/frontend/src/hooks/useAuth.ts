@@ -1,6 +1,7 @@
 import { useContext } from 'react';
 // Import from the new definition file
-import { AuthContext, AuthContextType } from '../context/AuthContextDefinition'; 
+import { AuthContext } from '../context/AuthContextDefinition';
+import type { AuthContextType } from '../context/AuthContextDefinition'; 
 
 export const useAuth = (): AuthContextType => {
   // Use the imported AuthContext
@@ -10,3 +11,5 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
+
+export default useAuth;
