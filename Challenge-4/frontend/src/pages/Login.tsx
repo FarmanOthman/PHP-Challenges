@@ -1,137 +1,99 @@
-import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth'; // Updated import path
-
-type LoginFormData = {
-  email: string;
-  password: string;
-};
-
-// Define a proper error interface for API errors
-interface ApiError {
-  response?: {
-    data?: {
-      message?: string;
-    };
-  };
-  message?: string;
-}
+import { useState } from 'react';
+import { useNavigate, Link as RouterLink } from 'react-router-dom';
+import {
+  Button,
+  Container,
+  FormControl,
+  FormLabel,
+  Input,
+  VStack,
+  Heading,
+  Text,
+  Link,
+  useToast,
+  Card,
+  CardBody,
+  useColorModeValue
+} from '@chakra-ui/react';
+import { useAuth } from '../hooks/useAuth';
 
 const Login = () => {
-  const { login, isAuthenticated } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const { login } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
-  const { register, handleSubmit, formState: { errors } } = useForm<LoginFormData>();
-  const [serverError, setServerError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const toast = useToast();
+  const bgColor = useColorModeValue('white', 'gray.700');
 
-  // Get redirect path from location state or default to /chat
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/chat';
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
 
-  // If already authenticated, redirect to intended destination
-  useEffect(() => {
-    if (isAuthenticated) {
-      navigate(from, { replace: true });
-    }
-  }, [isAuthenticated, navigate, from]);
-
-  const onSubmit = async (data: LoginFormData) => {
     try {
-      setLoading(true);
-      setServerError(null);
-      await login(data.email, data.password);
-      // Navigate is handled by the useEffect
-    } catch (error: unknown) {
-      // Type guard for ApiError
-      const apiError = error as ApiError;
-      setServerError(
-        apiError.response?.data?.message || apiError.message || 'An unexpected error occurred. Please try again later.'
-      );
+      await login(email, password);
+      navigate('/chat');
+    } catch (error) {
+      toast({
+        title: 'Login failed',
+        description: error instanceof Error ? error.message : 'Please check your credentials and try again.',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-full flex-col justify-center px-6 py-12 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-sm">
-        <h2 className="mt-10 text-center text-2xl font-bold leading-9 tracking-tight text-gray-900">
-          Sign in to your account
-        </h2>
-      </div>
+    <Container maxW="container.sm" py={10}>
+      <Card bg={bgColor} shadow="lg">
+        <CardBody>
+          <VStack spacing={6} as="form" onSubmit={handleSubmit}>
+            <Heading size="xl">Welcome Back</Heading>
+            <Text color="gray.500">Sign in to continue to Chat App</Text>
 
-      <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
-        {serverError && (
-          <div className="p-3 mb-4 text-sm text-red-700 bg-red-100 rounded-lg" role="alert">
-            {serverError}
-          </div>
-        )}
-
-        <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium leading-6 text-gray-900">
-              Email address
-            </label>
-            <div className="mt-2">
-              <input
-                id="email"
+            <FormControl isRequired>
+              <FormLabel>Email address</FormLabel>
+              <Input
                 type="email"
-                autoComplete="email"
-                className="block w-full rounded-md border-0 py-1.5 px-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm"
-                {...register('email', {
-                  required: 'Email is required',
-                  pattern: {
-                    value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                    message: 'Invalid email address',
-                  },
-                })}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your email"
               />
-              {errors.email && (
-                <p className="mt-2 text-sm text-red-600">{errors.email.message}</p>
-              )}
-            </div>
-          </div>
+            </FormControl>
 
-          <div>
-            <div className="flex items-center justify-between">
-              <label htmlFor="password" className="block text-sm font-medium leading-6 text-gray-900">
-                Password
-              </label>
-            </div>
-            <div className="mt-2">
-              <input
-                id="password"
+            <FormControl isRequired>
+              <FormLabel>Password</FormLabel>
+              <Input
                 type="password"
-                autoComplete="current-password"
-                className="block w-full rounded-md border-0 py-1.5 px-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm"
-                {...register('password', { required: 'Password is required' })}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
               />
-              {errors.password && (
-                <p className="mt-2 text-sm text-red-600">{errors.password.message}</p>
-              )}
-            </div>
-          </div>
+            </FormControl>
 
-          <div>
-            <button
+            <Button
               type="submit"
-              disabled={loading}
-              className="flex w-full justify-center rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:bg-indigo-300"
+              colorScheme="blue"
+              size="lg"
+              width="full"
+              isLoading={isLoading}
             >
-              {loading ? 'Signing in...' : 'Sign in'}
-            </button>
-          </div>
-        </form>
+              Sign In
+            </Button>
 
-        <p className="mt-10 text-center text-sm text-gray-500">
-          Not a member?{' '}
-          <Link to="/register" className="font-semibold leading-6 text-indigo-600 hover:text-indigo-500">
-            Register a new account
-          </Link>
-        </p>
-      </div>
-    </div>
+            <Text>
+              Don't have an account?{' '}
+              <Link as={RouterLink} to="/register" color="blue.500">
+                Sign up
+              </Link>
+            </Text>
+          </VStack>
+        </CardBody>
+      </Card>
+    </Container>
   );
 };
 
