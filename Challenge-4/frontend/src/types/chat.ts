@@ -3,6 +3,8 @@ export interface User {
   name: string;
   email: string;
   avatar?: string;
+  role?: string;
+  status?: string;
 }
 
 export interface Message {
@@ -22,8 +24,10 @@ export interface Room {
   description?: string;
   type: 'public' | 'private' | 'direct';
   isPrivate: boolean;
+  owner_id: number;
   members: User[];
   admins: User[];
+  availableUsers?: User[];  // Add this line
   createdBy: number;
   createdAt: string;
   updatedAt: string;
