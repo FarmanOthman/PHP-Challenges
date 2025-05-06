@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useChatStore } from '../store/chatStore';
 import ChatSidebar from './chat/ChatSidebar';
 import MessageList from './chat/MessageList';
@@ -6,18 +6,48 @@ import MessageInput from './chat/MessageInput';
 import OnlineUsers from './chat/OnlineUsers';
 import RoomManagement from './chat/RoomManagement';
 import api from '../services/api';
-import { User } from '../types/chat';
+import type { User } from '../types/chat';
+import {
+  Box,
+  Button,
+  Flex,
+  Input,
+  Textarea,
+  Stack,
+  Text,
+  Badge,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  ModalCloseButton,
+  FormControl,
+  FormLabel,
+  Select,
+  Checkbox,
+  VStack,
+  useToast,
+  useColorModeValue
+} from '@chakra-ui/react';
+import { AddIcon, SettingsIcon } from '@chakra-ui/icons';
+import { AnimatePresence, motion } from 'framer-motion';
+import ChatSkeleton from './chat/ChatSkeleton';
+
+// Create a motion component with Chakra UI
+const MotionBox = motion(Box);
 
 const ChatApp = () => {
-  const { 
-    rooms, 
-    activeRoomId, 
-    messages, 
-    fetchRooms
+  const {
+    rooms,
+    activeRoomId,
+    messages,
+    fetchRooms,
+    setActiveRoom
   } = useChatStore();
-  
+
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [showCreateRoom, setShowCreateRoom] = useState(false);
   const [showRoomManagement, setShowRoomManagement] = useState(false);
   const [roomFormData, setRoomFormData] = useState({
@@ -28,32 +58,53 @@ const ChatApp = () => {
     members: [] as number[]
   });
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+
+  const toast = useToast();
   
-  // Get current user ID from localStorage for message display
+  // Use Chakra's color mode values for consistent theming
+  const bgColor = useColorModeValue("white", "gray.800");
+  const borderColor = useColorModeValue("gray.200", "gray.700");
+  const messageListBgColor = useColorModeValue("gray.50", "gray.900");
+  const mainBgColor = useColorModeValue("gray.50", "gray.900");
+
   const currentUserId = parseInt(localStorage.getItem('user_id') || '0');
 
-  // Fetch rooms when component mounts
-  useEffect(() => {
-    fetchRooms();
-    fetchAvailableUsers();
-  }, [fetchRooms]);
-
-  // Fetch users that can be added to rooms
-  const fetchAvailableUsers = async () => {
+  const fetchAvailableUsers = useCallback(async () => {
     try {
       const response = await api.get('/users');
       setAvailableUsers(response.data);
     } catch (error) {
       console.error('Failed to fetch users:', error);
-      setError('Failed to fetch users');
+      toast({
+        title: 'Error fetching users',
+        description: 'Could not load the list of users.',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
     }
-  };
+  }, [toast]);
 
-  // Create a new room
+  useEffect(() => {
+    fetchRooms();
+    fetchAvailableUsers();
+  }, [fetchRooms, fetchAvailableUsers]);
+
   const createRoom = async () => {
-    setLoading(true);
-    setError(null);
+    if (!roomFormData.name.trim()) {
+      toast({
+        title: 'Room name required',
+        description: 'Please enter a name for the room.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
     
+    setLoading(true);
+
     try {
       await api.post('/rooms', {
         name: roomFormData.name,
@@ -62,11 +113,8 @@ const ChatApp = () => {
         is_private: roomFormData.isPrivate,
         members: roomFormData.members
       });
-      
-      // Refresh rooms list
+
       await fetchRooms();
-      
-      // Reset form and close modal
       setRoomFormData({
         name: '',
         description: '',
@@ -75,35 +123,45 @@ const ChatApp = () => {
         members: []
       });
       setShowCreateRoom(false);
+
+      toast({
+        title: 'Room created successfully',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error 
-        ? error.message
-        : 'Failed to create room';
-      setError(errorMessage);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create room';
+      toast({
+        title: 'Error creating room',
+        description: errorMessage,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle form changes
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
     const { name, value } = e.target;
-    setRoomFormData({
-      ...roomFormData,
+    setRoomFormData(prev => ({
+      ...prev,
       [name]: value
-    });
+    }));
   };
 
-  // Handle checkbox changes
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, checked } = e.target;
-    setRoomFormData({
-      ...roomFormData,
+    setRoomFormData(prev => ({
+      ...prev,
       [name]: checked
-    });
+    }));
   };
 
-  // Handle member selection
   const handleMemberSelection = (userId: number) => {
     setRoomFormData(prev => {
       const isSelected = prev.members.includes(userId);
@@ -116,183 +174,239 @@ const ChatApp = () => {
     });
   };
 
-  // Get active room messages
+  const handleRoomSelect = (roomId: string) => {
+    setMessagesLoading(true);
+    setActiveRoom(roomId);
+    setTimeout(() => setMessagesLoading(false), 500);
+  };
+
   const activeRoomMessages = activeRoomId ? messages[activeRoomId] || [] : [];
-  
-  // Get active room data
   const activeRoom = rooms.find(room => room.id === activeRoomId);
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      {/* Chat sidebar with room list */}
-      <div className="w-1/4 bg-white border-r">
-        <div className="flex justify-between items-center p-4 border-b">
-          <h2 className="text-xl font-semibold">Rooms</h2>
-          <button 
+    <Flex h="100vh" bg={mainBgColor}>
+      {/* Chat sidebar */}
+      <Box 
+        w={{ base: "70px", md: "250px", lg: "300px" }} 
+        bg={bgColor} 
+        borderRight="1px" 
+        borderColor={borderColor}
+        overflow="hidden"
+      >
+        <Flex p={4} justify="space-between" align="center" borderBottom="1px" borderColor={borderColor}>
+          <Text fontSize="xl" fontWeight="bold" display={{ base: "none", md: "block" }}>Rooms</Text>
+          <Button
+            size="sm"
+            colorScheme="blue"
             onClick={() => setShowCreateRoom(true)}
-            className="bg-indigo-600 text-white px-3 py-1 rounded-md hover:bg-indigo-700"
-            aria-label="Create new room"
+            leftIcon={<AddIcon />}
           >
-            New Room
-          </button>
-        </div>
-        <ChatSidebar rooms={rooms} activeRoomId={activeRoomId} />
-      </div>
+            <Text display={{ base: "none", md: "block" }}>New Room</Text>
+          </Button>
+        </Flex>
+        {loading ? (
+          <ChatSkeleton type="rooms" />
+        ) : (
+          <ChatSidebar 
+            rooms={rooms} 
+            activeRoomId={activeRoomId} 
+            onRoomSelect={handleRoomSelect}
+          />
+        )}
+      </Box>
 
       {/* Main chat area */}
-      <div className="flex-1 flex flex-col">
-        {activeRoomId && activeRoom ? (
-          <>
-            {/* Room header */}
-            <div className="bg-white p-4 border-b flex justify-between items-center">
-              <div>
-                <h2 className="text-xl font-semibold">{activeRoom.name}</h2>
-                <p className="text-sm text-gray-500">
-                  {activeRoom.type.charAt(0).toUpperCase() + activeRoom.type.slice(1)} room • 
-                  {activeRoom.members.length} members
-                </p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
+      <Flex flex={1} direction="column">
+        <AnimatePresence mode="wait">
+          {activeRoomId && activeRoom ? (
+            <MotionBox
+              key={activeRoomId}
+              flex={1}
+              display="flex"
+              flexDirection="column"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Flex 
+                px={6} 
+                py={4} 
+                bg={bgColor} 
+                borderBottom="1px" 
+                borderColor={borderColor} 
+                justify="space-between" 
+                align="center"
+              >
+                <Box>
+                  <Flex align="center" gap={2}>
+                    <Text fontSize="xl" fontWeight="bold">{activeRoom.name}</Text>
+                    <Badge colorScheme={activeRoom.type === 'public' ? 'green' : activeRoom.type === 'direct' ? 'blue' : 'purple'}>
+                      {activeRoom.type}
+                    </Badge>
+                  </Flex>
+                  <Text fontSize="sm" color="gray.500">
+                    {activeRoom.members.length} members
+                  </Text>
+                </Box>
+                <Button
+                  variant="ghost"
                   onClick={() => setShowRoomManagement(true)}
-                  className="text-indigo-600 hover:text-indigo-800 px-3 py-1"
-                  aria-label="Room Settings"
+                  leftIcon={<SettingsIcon />}
                 >
-                  Room Settings
-                </button>
-              </div>
-            </div>
+                  <Text display={{ base: "none", md: "block" }}>Settings</Text>
+                </Button>
+              </Flex>
 
-            {/* Messages area */}
-            <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
-              <MessageList messages={activeRoomMessages} currentUserId={currentUserId} />
-            </div>
+              <Box flex={1} overflowY="auto" p={4} bg={messageListBgColor}>
+                {messagesLoading ? (
+                  <ChatSkeleton type="messages" />
+                ) : (
+                  <MessageList messages={activeRoomMessages} currentUserId={currentUserId} />
+                )}
+              </Box>
 
-            {/* Message input */}
-            <div className="bg-white border-t p-4">
-              <MessageInput />
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center">
-            <p className="text-xl text-gray-500">Select a room to start chatting</p>
-          </div>
-        )}
-      </div>
+              <Box p={4} bg={bgColor} borderTop="1px" borderColor={borderColor}>
+                <MessageInput roomId={activeRoomId} />
+              </Box>
+            </MotionBox>
+          ) : (
+            <MotionBox
+              flex={1}
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              flexDirection="column"
+              gap={4}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <Text fontSize="xl" color="gray.500">Select a room to start chatting</Text>
+              <Button
+                colorScheme="blue"
+                onClick={() => setShowCreateRoom(true)}
+                leftIcon={<AddIcon />}
+              >
+                Create a Room
+              </Button>
+            </MotionBox>
+          )}
+        </AnimatePresence>
+      </Flex>
 
       {/* Online users sidebar */}
-      <div className="w-1/5 bg-white border-l">
+      <Box 
+        w={{ base: "70px", md: "200px", lg: "250px" }} 
+        bg={bgColor} 
+        borderLeft="1px" 
+        borderColor={borderColor}
+        display={{ base: "none", lg: "block" }}
+      >
         <OnlineUsers />
-      </div>
+      </Box>
 
       {/* Create room modal */}
-      {showCreateRoom && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg w-full max-w-md p-6">
-            <h2 className="text-2xl font-bold mb-4">Create New Room</h2>
-            
-            {error && (
-              <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md">
-                {error}
-              </div>
-            )}
-            
-            <form onSubmit={(e) => { e.preventDefault(); createRoom(); }}>
-              <div className="mb-4">
-                <label className="block text-gray-700 mb-2" htmlFor="room-name">Room Name</label>
-                <input
-                  id="room-name"
-                  type="text"
+      <Modal isOpen={showCreateRoom} onClose={() => setShowCreateRoom(false)} size="lg">
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Create New Room</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack spacing={4}>
+              <FormControl isRequired>
+                <FormLabel>Room Name</FormLabel>
+                <Input
                   name="name"
                   value={roomFormData.name}
                   onChange={handleInputChange}
-                  className="w-full px-3 py-2 border rounded-md"
                   placeholder="Enter room name"
-                  required
                 />
-              </div>
-              
-              <div className="mb-4">
-                <label className="block text-gray-700 mb-2" htmlFor="room-description">Description</label>
-                <textarea
-                  id="room-description"
+              </FormControl>
+
+              <FormControl>
+                <FormLabel>Description</FormLabel>
+                <Textarea
                   name="description"
                   value={roomFormData.description}
                   onChange={handleInputChange}
-                  className="w-full px-3 py-2 border rounded-md"
-                  rows={3}
                   placeholder="Enter room description"
+                  resize="vertical"
                 />
-              </div>
-              
-              <div className="mb-4">
-                <label className="block text-gray-700 mb-2" htmlFor="room-type">Room Type</label>
-                <select
-                  id="room-type"
+              </FormControl>
+
+              <FormControl>
+                <FormLabel id="room-type-label" htmlFor="room-type-select">Room Type</FormLabel>
+                <Select
+                  id="room-type-select"
                   name="type"
                   value={roomFormData.type}
                   onChange={handleInputChange}
-                  className="w-full px-3 py-2 border rounded-md"
-                  aria-label="Select room type"
+                  aria-label="Room type selection"
+                  aria-labelledby="room-type-label"
+                  title="Select room type"
                 >
                   <option value="public">Public</option>
                   <option value="private">Private</option>
                   <option value="direct">Direct Message</option>
-                </select>
-              </div>
-              
-              <div className="mb-4">
-                <label className="flex items-center">
-                  <input
-                    id="room-private"
-                    type="checkbox"
-                    name="isPrivate"
-                    checked={roomFormData.isPrivate}
-                    onChange={handleCheckboxChange}
-                    className="mr-2"
-                  />
-                  <span>Make room private (only visible to members)</span>
-                </label>
-              </div>
-              
-              <div className="mb-4">
-                <label className="block text-gray-700 mb-2">Add Members</label>
-                <div className="max-h-40 overflow-y-auto border rounded-md p-2">
-                  {availableUsers.map(user => (
-                    <label key={user.id} className="flex items-center py-1">
-                      <input
-                        type="checkbox"
-                        checked={roomFormData.members.includes(user.id)}
-                        onChange={() => handleMemberSelection(user.id)}
-                        className="mr-2"
-                        aria-label={`Add ${user.name} to room`}
-                      />
-                      <span>{user.name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              
-              <div className="flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateRoom(false)}
-                  className="px-4 py-2 border rounded-md hover:bg-gray-100"
+                </Select>
+              </FormControl>
+
+              <FormControl>
+                <Checkbox
+                  name="isPrivate"
+                  isChecked={roomFormData.isPrivate}
+                  onChange={handleCheckboxChange}
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                  Make room private (only visible to members)
+                </Checkbox>
+              </FormControl>
+
+              <FormControl>
+                <FormLabel>Add Members</FormLabel>
+                <Box 
+                  maxH="200px" 
+                  overflowY="auto" 
+                  borderWidth={1} 
+                  borderRadius="md" 
+                  p={2}
+                  borderColor={borderColor}
                 >
-                  {loading ? 'Creating...' : 'Create Room'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+                  <Stack spacing={2} direction="column">
+                    {availableUsers.length > 0 ? (
+                      availableUsers.map(user => (
+                        <Checkbox
+                          key={user.id}
+                          isChecked={roomFormData.members.includes(user.id)}
+                          onChange={() => handleMemberSelection(user.id)}
+                        >
+                          {user.name}
+                        </Checkbox>
+                      ))
+                    ) : (
+                      <Text fontSize="sm" color="gray.500">No users available</Text>
+                    )}
+                  </Stack>
+                </Box>
+              </FormControl>
+            </VStack>
+          </ModalBody>
+
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={() => setShowCreateRoom(false)}>
+              Cancel
+            </Button>
+            <Button
+              colorScheme="blue"
+              onClick={createRoom}
+              isLoading={loading}
+              loadingText="Creating..."
+            >
+              Create Room
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
       {/* Room management modal */}
       {showRoomManagement && activeRoom && (
@@ -301,7 +415,7 @@ const ChatApp = () => {
           onClose={() => setShowRoomManagement(false)} 
         />
       )}
-    </div>
+    </Flex>
   );
 };
 
