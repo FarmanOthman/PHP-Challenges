@@ -1,5 +1,6 @@
 import Pusher, { Channel, Members } from 'pusher-js';
-import { Message } from '../types/chat';
+// Import only the Message interface as it's the only one used
+import type { Message } from '../types/chat';
 
 // Define interfaces for Pusher event data
 interface PusherError {
@@ -20,10 +21,17 @@ interface PusherMember {
   info: Record<string, any>; // Or a more specific type if you know the structure of 'info'
 }
 
+type MessageCallback = (message: Message) => void;
+type PresenceCallback = (data: { userId: number; status: 'online' | 'offline' }) => void;
+type TypingCallback = (data: { roomId: string; userId: string; isTyping: boolean }) => void;
+
 class SocketService {
   private pusher: Pusher | null = null;
   private channels: { [key: string]: Channel } = {};
   private connected = false;
+  private messageCallback: MessageCallback | null = null;
+  private presenceCallback: PresenceCallback | null = null;
+  private typingCallback: TypingCallback | null = null;
 
   // Initialize the Pusher connection
   connect(token: string): Promise<void> {
@@ -93,12 +101,12 @@ class SocketService {
       console.log('Members currently in room:', members.count);
     });
 
-    channel.bind('pusher:member_added', (member: PusherMember) => { // Use PusherMember type
+    channel.bind('pusher:member_added', (member: PusherMember) => {
       console.log('Member joined:', member.info);
       this.emitPresenceChange(parseInt(member.id, 10), 'online');
     });
 
-    channel.bind('pusher:member_removed', (member: PusherMember) => { // Use PusherMember type
+    channel.bind('pusher:member_removed', (member: PusherMember) => {
       console.log('Member left:', member.info);
       this.emitPresenceChange(parseInt(member.id, 10), 'offline');
     });
@@ -106,6 +114,16 @@ class SocketService {
     channel.bind('new.message', (data: { message: Message }) => {
       if (this.messageCallback) {
         this.messageCallback(data.message);
+      }
+    });
+
+    channel.bind('typing', (data: { user_id: string; is_typing: boolean }) => {
+      if (this.typingCallback) {
+        this.typingCallback({
+          roomId,
+          userId: data.user_id,
+          isTyping: data.is_typing
+        });
       }
     });
   }
@@ -121,9 +139,6 @@ class SocketService {
     }
   }
 
-  private messageCallback: ((message: Message) => void) | null = null;
-  private presenceCallback: ((data: { userId: number; status: 'online' | 'offline' }) => void) | null = null;
-
   // Listen for new messages in a room
   onNewMessage(callback: (message: Message) => void): void {
     this.messageCallback = callback;
@@ -134,9 +149,25 @@ class SocketService {
     this.presenceCallback = callback;
   }
 
+  // Listen for typing status changes
+  onTypingStatus(callback: TypingCallback): void {
+    this.typingCallback = callback;
+  }
+
   private emitPresenceChange(userId: number, status: 'online' | 'offline'): void {
     if (this.presenceCallback) {
       this.presenceCallback({ userId, status });
+    }
+  }
+
+  /**
+   * @internal
+   * Internal method for emitting typing status updates to subscribers
+   * This is currently not used directly but kept for future implementation
+   */
+  private emitTypingStatus(roomId: string, userId: string, isTyping: boolean): void {
+    if (this.typingCallback) {
+      this.typingCallback({ roomId, userId, isTyping });
     }
   }
 
@@ -158,6 +189,17 @@ class SocketService {
       })
     }).catch(error => {
       console.error('Error sending message:', error);
+    });
+  }
+
+  // Send typing status
+  sendTypingStatus(roomId: string, isTyping: boolean): void {
+    const channel = this.channels[`presence-room.${roomId}`];
+    if (!channel) return;
+
+    channel.trigger('client-typing', {
+      room_id: roomId,
+      is_typing: isTyping
     });
   }
 
