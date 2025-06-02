@@ -302,7 +302,7 @@ const Home = () => {
                 overflow="hidden"
               >
                 <Image
-                  src="https://images.unsplash.com/photo-1611264190983-1ab8692e9df3?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1600&q=80"
+                  src="https://static.vecteezy.com/system/resources/previews/029/917/185/original/chat-interface-application-with-dialogue-window-clean-mobile-ui-design-concept-sms-messenger-vector.jpg"
                   alt="Chat App Interface"
                   borderRadius="xl"
                   fallbackSrc="https://via.placeholder.com/500x300?text=Chat+Interface"
