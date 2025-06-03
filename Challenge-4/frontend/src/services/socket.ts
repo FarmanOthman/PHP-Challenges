@@ -1,18 +1,7 @@
 import Pusher, { Channel, Members } from 'pusher-js';
 // Import only the Message interface as it's the only one used
 import type { Message } from '../types/chat';
-
-// Define interfaces for Pusher event data
-interface PusherError {
-  type: string;
-  error: {
-    type: string;
-    data: {
-      code: number;
-      message: string;
-    };
-  };
-}
+import api from './api';
 
 // Define interface for a presence channel member
 interface PusherMember {
@@ -34,43 +23,35 @@ class SocketService {
   private typingCallback: TypingCallback | null = null;
 
   // Initialize the Pusher connection
-  connect(token: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      try {
-        this.pusher = new Pusher('app-key', {
-          wsHost: '127.0.0.1',
-          wsPort: 6001,
-          wssPort: 6001,
-          cluster: 'mt1',
-          forceTLS: false,
-          enabledTransports: ['ws', 'wss'],
-          authEndpoint: 'http://localhost:8000/broadcasting/auth',
-          auth: {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            }
-          }
-        });
-
-        this.pusher.connection.bind('connected', () => {
-          this.connected = true;
-          console.log('Pusher connected successfully');
-          resolve();
-        });
-
-        this.pusher.connection.bind('error', (error: PusherError) => {
-          console.error('Pusher connection error:', error);
-          reject(error);
-        });
-
-        this.pusher.connection.bind('disconnected', () => {
-          this.connected = false;
-          console.log('Pusher disconnected');
-        });
-      } catch (error) {
-        console.error('Error initializing Pusher:', error);
+  async connect(token: string): Promise<void> {
+    // Ensure Laravel CSRF cookie for auth
+    await fetch('/sanctum/csrf-cookie', { credentials: 'include' });
+    this.pusher = new Pusher('app-key', {
+      wsHost: '127.0.0.1',
+      wsPort: 6001,
+      wssPort: 6001,
+      cluster: 'mt1',
+      forceTLS: false,
+      enabledTransports: ['ws', 'wss'],
+      authTransport: 'ajax',
+      authEndpoint: '/broadcasting/auth',
+      auth: { headers: { Authorization: `Bearer ${token}` } }
+    });
+    return new Promise<void>((resolve, reject) => {
+      this.pusher!.connection.bind('connected', () => {
+        this.connected = true;
+        console.log('Pusher connected successfully');
+        resolve();
+      });
+      this.pusher!.connection.bind('error', (error: unknown) => {
+        // Ignore client messaging disabled error (4301)
+        const err = error as { data?: { code?: number } };
+        if (err.data?.code === 4301) {
+          return;
+        }
+        console.error('Pusher connection error details:', error);
         reject(error);
-      }
+      });
     });
   }
 
@@ -161,36 +142,19 @@ class SocketService {
     }
   }
 
-  /**
-   * @internal
-   * Internal method for emitting typing status updates to subscribers
-   * This is currently not used directly but kept for future implementation
-   */
-  private emitTypingStatus(roomId: string, userId: string, isTyping: boolean): void {
-    if (this.typingCallback) {
-      this.typingCallback({ roomId, userId, isTyping });
-    }
-  }
-
-  // Send a message to a room
-  sendMessage(roomId: string, content: string): void {
+  // Send a message to a room via axios (includes auth token)
+  async sendMessage(roomId: string, content: string): Promise<void> {
     if (!this.connected) return;
-    
-    // Use the API to send the message, the WebSocket will handle the broadcast
-    fetch('/api/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({
-        content,
-        room_id: roomId
-      })
-    }).catch(error => {
-      console.error('Error sending message:', error);
-    });
+    const payload = { content, recipient_id: String(roomId), recipient_type: 'room' };
+    console.log('sendMessage payload:', payload);
+    try {
+      await api.post('/messages', payload);
+    } catch (err) {
+      console.error('Error sending message:', err);
+      // Dump out validation errors if present
+      // @ts-expect-error: AxiosError may have response.data.errors
+      console.error('Validation errors:', err.response?.data?.errors);
+    }
   }
 
   // Send typing status
@@ -198,10 +162,14 @@ class SocketService {
     const channel = this.channels[`presence-room.${roomId}`];
     if (!channel) return;
 
-    channel.trigger('client-typing', {
-      room_id: roomId,
-      is_typing: isTyping
-    });
+    try {
+      channel.trigger('client-typing', {
+        room_id: roomId,
+        is_typing: isTyping
+      });
+    } catch {
+      // ignore trigger errors (e.g., not yet authorized)
+    }
   }
 
   // Check if socket is connected
