@@ -132,13 +132,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
   
   sendMessage: async (content: string) => {
-    const { activeRoomId } = get();
+    const { activeRoomId, addMessage } = get();
     if (!activeRoomId || !content.trim()) return;
-    
     set({ error: null });
-    
     try {
-      socketService.sendMessage(activeRoomId, content);
+      const newMessage = await socketService.sendMessage(activeRoomId, content);
+      if (newMessage) {
+        addMessage(newMessage);
+      }
     } catch (error) {
       console.error('Error initiating message send:', error);
       set({ error: getErrorMessage(error, 'Failed to send message') });

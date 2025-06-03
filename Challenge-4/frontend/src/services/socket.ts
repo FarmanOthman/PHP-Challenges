@@ -142,18 +142,20 @@ class SocketService {
     }
   }
 
-  // Send a message to a room via axios (includes auth token)
-  async sendMessage(roomId: string, content: string): Promise<void> {
-    if (!this.connected) return;
+  /**
+   * Send a message to a room and return the created Message
+   */
+  async sendMessage(roomId: string, content: string): Promise<Message | null> {
+    if (!this.connected) return null;
     const payload = { content, recipient_id: String(roomId), recipient_type: 'room' };
-    console.log('sendMessage payload:', payload);
     try {
-      await api.post('/messages', payload);
-    } catch (err) {
-      console.error('Error sending message:', err);
-      // Dump out validation errors if present
-      // @ts-expect-error: AxiosError may have response.data.errors
-      console.error('Validation errors:', err.response?.data?.errors);
+      const response = await api.post<{ message: Message }>('/messages', payload);
+      return response.data.message;
+    } catch (error) {
+      console.error('Error sending message:', error);
+      // @ts-expect-error error may have response.data.errors
+      console.error('Validation errors:', error.response?.data?.errors);
+      return null;
     }
   }
 
