@@ -44,11 +44,12 @@ class SocketService {
           cluster: 'mt1',
           forceTLS: false,
           enabledTransports: ['ws', 'wss'],
+          authEndpoint: 'http://localhost:8000/broadcasting/auth',
           auth: {
             headers: {
               Authorization: `Bearer ${token}`,
-            },
-          },
+            }
+          }
         });
 
         this.pusher.connection.bind('connected', () => {

@@ -92,11 +92,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   fetchMessages: async (roomId: string) => {
     set({ loading: true, error: null });
     try {
-      const response = await api.get<{ messages: Message[] }>(`/rooms/${roomId}/messages`);
+      const response = await api.get<{ messages: { data: Message[] } }>(`/rooms/${roomId}/messages`);
+      const msgs = response.data.messages.data;
       set(state => ({
-        messages: { 
-          ...state.messages, 
-          [roomId]: response.data.messages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        messages: {
+          ...state.messages,
+          [roomId]: msgs.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
         },
         loading: false
       }));
